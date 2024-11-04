@@ -1,0 +1,4 @@
+pub const MEMORY_CHUNK_MIN_MB: u64 = 16;
+pub const MEMORY_CHUNK_SIZE_MB: u64 = 1;
+pub const MEMORY_CHUNK_SIZE: u64 = MEMORY_CHUNK_SIZE_MB * 1024 * 1024;
+pub const MEMORY_ALIGNMENT: u64 = 512;
