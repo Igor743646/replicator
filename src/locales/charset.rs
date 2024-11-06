@@ -1,5 +1,5 @@
 
-pub trait CharacterDecoder {
-    fn decode(&self, string : &[u8]) -> Vec<u8>;
+pub trait CharacterMapper {
+    fn map_to_utf8(&self, string : &[u8]) -> Vec<u8>;
 }
 
