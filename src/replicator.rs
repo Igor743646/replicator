@@ -297,7 +297,7 @@ impl OracleDBReplicator {
             // METADATA
             let context = Arc::new(RwLock::new(context));
             let locales = Arc::new(RwLock::new(locales));
-            let metadata = Box::new(metadata::Metadata::new(context, locales, source_name.to_string(), container_id, start_scn,
+            let metadata = Box::new(metadata::Metadata::new(context.clone(), locales.clone(), source_name.to_string(), container_id, start_scn,
                                               start_sequence, start_time.to_string(), start_time_rel));
             
         }
