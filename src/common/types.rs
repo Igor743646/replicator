@@ -38,17 +38,4 @@ impl From<u32> for TypeSeq {
     }
 }
 
-#[derive(Debug)]
-pub struct TypeConId(i16);
-
-impl default::Default for TypeConId {
-    fn default() -> Self {
-        Self {0 : -1}
-    }
-}
-
-impl From<i16> for TypeConId {
-    fn from(val: i16) -> Self {
-        Self {0 : val}
-    }
-}
+pub type TypeConId = i16;

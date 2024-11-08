@@ -1,15 +1,17 @@
 use clap::Parser;
-use std::io::Write;
+use std::{io::Write, process::exit};
 use log::{error, info};
 
-mod errors;
-use errors::OracleDBReplicatorError as ODBRError;
-mod replicator;
-mod ctx;
-mod constants;
-mod types;
+
+mod oracle_logical_replicator;
+#[macro_use]
+mod common;
+mod ctx; 
 mod metadata;
 mod locales;
+mod oradefs;
+mod builder;
+use common::errors::OLRError;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -18,39 +20,44 @@ struct ReplicatorArgs {
     file: String
 }
 
-fn start(args : ReplicatorArgs) -> Result<(), ODBRError> {
+fn start(args : ReplicatorArgs) -> Result<(), OLRError> {
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("OS: {}; Arch: {}; Family: {}", std::env::consts::OS, std::env::consts::ARCH, std::env::consts::FAMILY);
 
     if !args.file.ends_with(".json") {
-        return ODBRError::new(000001, format!("Wrong config file name: {0}", args.file)).err();
+        return olr_err!(000001, "Wrong config file name: {}", args.file).into();
     } 
 
-    info!("Config file name: {0}", args.file);
+    info!("Config file name: {}", args.file);
 
     if !std::fs::metadata(&args.file).is_ok() {
-        return ODBRError::new(000001, format!("File does not exist: {0}", args.file)).err();
+        return olr_err!(000001, "File does not exist: {}", args.file).into();
     }
 
-    let replicator = replicator::OracleDBReplicator::new(args.file);
+    let replicator = oracle_logical_replicator::OracleLogicalReplicator::new(args.file);
 
     replicator.run()
 }
 
 fn main() {
-
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(buf,
-                "{} [{:5}] {:>30} ({:>4}) - {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                record.level(),
+                "{} [{}\u{001b}[0;37;40m] {:>30} ({:>4}) - {}",
+                chrono::Local::now().format("\u{001b}[0;32;40m%Y-%m-%d \u{001b}[0;33;40m%H:%M:%S \u{001b}[0;37;40m"),
+                match record.level() {
+                    log::Level::Error => "\u{001b}[38;5;124mERROR",
+                    log::Level::Warn => "\u{001b}[38;5;196m WARN",
+                    log::Level::Info => "\u{001b}[38;5;226m INFO",
+                    log::Level::Debug => "\u{001b}[38;5;020mDEBUG",
+                    log::Level::Trace => "\u{001b}[38;5;15mTRACE",
+                },
                 record.file().unwrap(),
                 record.line().unwrap(),
                 record.args(),
             )
         })
-        .filter(None, log::LevelFilter::Debug)
+        .filter(None, log::LevelFilter::Trace)
         .init();
 
     let args = ReplicatorArgs::parse();
@@ -59,5 +66,6 @@ fn main() {
 
     if let Err(err) = res {
         error!("{}", err);
+        exit(err.code());
     }
 }

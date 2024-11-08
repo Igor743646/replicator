@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use super::charset::CharacterMapper;
 
 #[derive(Debug)]
@@ -45,14 +43,13 @@ mod tests {
     use std::string::FromUtf8Error;
     use super::*;
 
-    fn test(name: &'static str, charset_map : &'static [u32], word : &[u8]) -> Result<(), FromUtf8Error> {
+    fn test(name: &'static str, charset_map : &'static [u32], word : &[u8], true_word : &'static str) -> Result<(), FromUtf8Error> {
         let charset = CharSet7Bit::new(name, charset_map);
         
         let mapped_word = charset.map_to_utf8(&word);
         let string = String::from_utf8(mapped_word)?;
         
-
-        assert_eq!(string, "Hello, world!");
+        assert_eq!(string, true_word);
 
         Ok(())
     }
@@ -60,17 +57,18 @@ mod tests {
     #[test]
     fn test_us_7_ascii() -> Result<(), FromUtf8Error> {
         let word : [u8; 13] = [0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x77,  0x6F, 0x72, 0x6C, 0x64, 0x21];
-        test("US7ASCII", UNICODE_MAP_US7ASCII, word.as_slice())?;
+        test("US7ASCII", UNICODE_MAP_US7ASCII, word.as_slice(), "Hello, world!")?;
+
         Ok(())
     }
 
     #[test]
     fn test_d_7_dec() -> Result<(), FromUtf8Error> {
         let word : [u8; 13] = [0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x77,  0x6F, 0x72, 0x6C, 0x64, 0x21];
-        test("D7DEC", UNICODE_MAP_D7DEC, word.as_slice())?;
+        test("D7DEC", UNICODE_MAP_D7DEC, word.as_slice(), "Hello, world!")?;
 
-        let word : [u8; 13] = [0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x77,  0x6F, 0x72, 0x6C, 0x64, 0x21];
-        test("D7DEC", UNICODE_MAP_D7DEC, word.as_slice())?;
+        let word : [u8; 8] = [0x40, 0x5B, 0x5C, 0x5D, 0x7B, 0x7C, 0x7D, 0x7E];
+        test("D7DEC", UNICODE_MAP_D7DEC, word.as_slice(), "§ÄÖÜäöüß")?;
 
         Ok(())
     }

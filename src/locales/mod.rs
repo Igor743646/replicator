@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+pub mod charset;
+pub mod charset_7bit;
+
 use charset::CharacterMapper;
 use charset_7bit::CharSet7Bit;
-
-mod charset;
-mod charset_7bit;
 
 
 #[derive(Default)]
