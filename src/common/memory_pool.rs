@@ -1,5 +1,5 @@
-use std::{alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout}, borrow::{Borrow, BorrowMut}, collections::HashSet, fmt::{Display, UpperHex}, sync::Arc};
-use log::{debug, trace, warn};
+use std::{alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout}, collections::HashSet, fmt::{Display, UpperHex}};
+use log::{trace, warn};
 
 use crate::olr_err;
 use super::{constants, errors::OLRError};
@@ -8,6 +8,9 @@ use super::{constants, errors::OLRError};
 pub struct MemoryChunk {
     data : *mut u8
 }
+
+unsafe impl Sync for MemoryChunk {}
+unsafe impl Send for MemoryChunk {}
 
 impl MemoryChunk {
     pub fn new(data : *mut u8) -> Self {
@@ -53,7 +56,7 @@ impl UpperHex for MemoryChunk {
 }
 
 #[derive(Debug, Default)]
-pub struct MemoryManager {
+pub struct MemoryPool {
     memory_min_mb : u64,
     memory_max_mb : u64,
     read_buffer_max : u64,
@@ -69,15 +72,15 @@ pub struct MemoryManager {
     memory_chunks_hmw : u64
 }
 
-impl Drop for MemoryManager {
+impl Drop for MemoryPool {
     fn drop(&mut self) {
         for chunk in self.memory_chunks_allocated_set.iter() {
-            MemoryManager::deallocate_chunk(*chunk);
+            MemoryPool::deallocate_chunk(*chunk);
         }
     }
 }
 
-impl MemoryManager {
+impl MemoryPool {
 
     const MEMORY_LAYOUT : Layout = unsafe {Layout::from_size_align_unchecked(constants::MEMORY_CHUNK_SIZE as usize, constants::MEMORY_ALIGNMENT as usize)};
 
@@ -112,7 +115,7 @@ impl MemoryManager {
         };
 
         for _ in 0 .. result.memory_chunks_min as usize {
-            let chunk = MemoryManager::allocate_chunk()?;
+            let chunk = MemoryPool::allocate_chunk()?;
             result.memory_chunks_allocated_set.insert(chunk);
             result.memory_chunks.push(chunk);
             result.memory_chunks_allocated += 1;
@@ -128,7 +131,7 @@ impl MemoryManager {
         }
 
         let return_index = if self.memory_chunks_free == 0 {
-            let chunk = MemoryManager::allocate_chunk()?;
+            let chunk = MemoryPool::allocate_chunk()?;
             self.memory_chunks_allocated_set.insert(chunk);
             self.memory_chunks.push(chunk);
             self.memory_chunks_allocated += 1;
@@ -150,7 +153,7 @@ impl MemoryManager {
             chunk, self.memory_chunks_free, self.memory_chunks_allocated, self.memory_chunks_max );
 
         if self.memory_chunks_free >= self.memory_chunks_min || self.memory_chunks_allocated > self.memory_chunks_max {
-            MemoryManager::deallocate_chunk(chunk);
+            MemoryPool::deallocate_chunk(chunk);
             self.memory_chunks_allocated_set.remove(&chunk);
             self.memory_chunks_allocated -= 1;
         } else {

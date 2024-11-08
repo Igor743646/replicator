@@ -18,7 +18,7 @@ impl From<u64> for TypeScn {
 
 impl std::fmt::Display for TypeScn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0);
+        write!(f, "{}", self.0)?;
         std::unimplemented!();
     }
 }

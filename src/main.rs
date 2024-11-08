@@ -11,6 +11,7 @@ mod metadata;
 mod locales;
 mod oradefs;
 mod builder;
+mod replicators;
 use common::errors::OLRError;
 
 #[derive(Parser, Debug)]
@@ -43,7 +44,7 @@ fn main() {
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(buf,
-                "{} [{}\u{001b}[0;37;40m] {:>30} ({:>4}) - {}",
+                "{} [{}\u{001b}[0;37;40m] {:>40} ({:>4}) - {}",
                 chrono::Local::now().format("\u{001b}[0;32;40m%Y-%m-%d \u{001b}[0;33;40m%H:%M:%S \u{001b}[0;37;40m"),
                 match record.level() {
                     log::Level::Error => "\u{001b}[38;5;124mERROR",
@@ -66,6 +67,8 @@ fn main() {
 
     if let Err(err) = res {
         error!("{}", err);
-        exit(err.code());
+        error!("Replication stopped due to error");
+    } else {
+        info!("Replication stopped");
     }
 }

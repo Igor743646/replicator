@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use log::debug;
 
-use crate::common::{errors::OLRError, mem_manager::{MemoryChunk, MemoryManager}};
+use crate::common::{errors::OLRError, memory_pool::{MemoryChunk, MemoryPool}};
 
 #[derive(Debug, Default)]
 pub struct Dump {
@@ -27,7 +27,7 @@ pub struct Ctx {
     pub schema_force_interval : u64,
 
     // Memory Management
-    memory_manager : MemoryManager,
+    memory_manager : MemoryPool,
 }
 
 impl Ctx {
@@ -38,7 +38,7 @@ impl Ctx {
     pub fn initialize(&mut self, memory_min_mb : u64, memory_max_mb : u64, read_buffer_max : u64) -> Result<(), OLRError> {
         debug!("Initialize Ctx: memory_min_mb: {} memory_max_mb: {} read_buffer_max: {}", memory_min_mb, memory_max_mb, read_buffer_max);
 
-        self.memory_manager = MemoryManager::new(memory_min_mb, memory_max_mb, read_buffer_max)?;
+        self.memory_manager = MemoryPool::new(memory_min_mb, memory_max_mb, read_buffer_max)?;
 
         Ok(())
     }

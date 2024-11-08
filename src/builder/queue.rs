@@ -1,8 +1,7 @@
-use std::{borrow::BorrowMut, fmt::{Debug, Display}, io::Write, ops::Deref, ptr::{write, write_unaligned, NonNull}, sync::{Arc, RwLock}};
-use crate::{common::{errors::OLRError, mem_manager::MemoryChunk}, ctx::Ctx};
+use std::{fmt::Display, sync::{Arc, RwLock}};
+use crate::{common::{errors::OLRError, memory_pool::MemoryChunk}, ctx::Ctx};
 
-use bytebuffer::{ByteReader, ByteBuffer};
-use log::{info, debug};
+use log::info;
 
 pub struct BuilderChunk {
     id      : u64,
@@ -11,6 +10,9 @@ pub struct BuilderChunk {
     data    : *mut u8,
     next    : *mut BuilderChunk,
 }
+
+unsafe impl Sync for BuilderChunk {}
+unsafe impl Send for BuilderChunk {}
 
 impl BuilderChunk {
     pub fn from_mem_chunk(mut chunk : MemoryChunk) -> &'static mut Self {

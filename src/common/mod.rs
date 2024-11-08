@@ -2,4 +2,5 @@
 pub mod types;
 pub mod constants;
 pub mod errors;
-pub mod mem_manager;
+pub mod memory_pool;
+pub mod thread;

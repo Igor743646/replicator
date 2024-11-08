@@ -1,15 +1,23 @@
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::RwLock;
+use std::task::Context;
+use log::error;
 use log::{debug, info};
 
 use crate::builder;
 use crate::common::constants;
 use crate::common::errors::OLRError;
+use crate::common::thread::spawn;
 use crate::common::types;
 use crate::ctx::Ctx;
 use crate::locales::Locales;
 use crate::metadata;
 use crate::olr_err;
+use crate::replicators;
+use crate::replicators::online_replicator::OnlineReplicator;
 
 pub struct OracleLogicalReplicator {
     config_filename : String
@@ -53,11 +61,11 @@ impl OracleLogicalReplicator {
         }
     }
 
-    fn get_json_field_s<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<&'a str, OLRError> {
-        value.get(name)
-            .ok_or(olr_err!(000001, "Not field {} in config", name))?
-            .as_str()
-            .ok_or(olr_err!(000001, "Field {} not a string", name))
+    fn get_json_field_s<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<String, OLRError> {
+        Ok(value.get(name)
+                    .ok_or(olr_err!(000001, "Not field {} in config", name))?
+                    .as_str()
+                    .ok_or(olr_err!(000001, "Field {} not a string", name))?.to_string())
     }
 
     fn get_json_field_i64(&self, value : &serde_json::Value, name : &str) -> Result<i64, OLRError> {
@@ -75,6 +83,10 @@ impl OracleLogicalReplicator {
     }
 
     pub fn run(&self) -> Result<(), OLRError> {
+
+        let mut handle_vector = Vec::new();
+
+        let (main_sender, main_reciver): (Sender<Result<(), OLRError>>, Receiver<Result<(), OLRError>>) = mpsc::channel();
 
         let locales_ptr = Arc::new(RwLock::new(Locales::new()));
         let context_ptr = Arc::new(RwLock::new(Ctx::new()));
@@ -256,10 +268,10 @@ impl OracleLogicalReplicator {
                 
                 self.get_json_field_s(&reader_json, "start-time")?
             } else {
-                ""
+                String::default()
             };
 
-            let mut state_path = "checkpoint";
+            let mut state_path = "checkpoint".to_string();
 
             if source_json.get("state").is_some() {
                 let state_json = self.get_json_field_o(source_json, "state")?;
@@ -315,7 +327,7 @@ impl OracleLogicalReplicator {
 
             self.check_config_fields(&format_json, ["db", "attributes", "interval-dts", "interval-ytm", "message", "rid", "xid",
                                                 "timestamp", "timestamp-tz", "timestamp-all", "char", "scn", "scn-all",
-                                                "unknown", "schema", "column", "unknown-type", "flush-buffer", "type"]);
+                                                "unknown", "schema", "column", "unknown-type", "flush-buffer", "type"])?;
             
 
             let mut db_format = builder::formats::DB_FORMAT_DEFAULT;
@@ -461,12 +473,69 @@ impl OracleLogicalReplicator {
 
             let builder_ptr = Arc::new(RwLock::new(builder::JsonBuilder::new(context_ptr.clone(), locales_ptr.clone(), metadata_ptr.clone(), db_format, attributes_format,
                 interval_dts_format, interval_ytm_format, message_format, rid_format, xid_format, timestamp_format, timestamp_tz_format, 
-                timestamp_all, char_format, scn_format, scn_all, unknown_format, schema_format, column_format, unknown_type)));
+                timestamp_all, char_format, scn_format, scn_all, unknown_format, schema_format, column_format, unknown_type)?));
 
+            let reader_type = self.get_json_field_s(&reader_json, "type")?;
+
+            let replicator = match reader_type.as_str() {
+                "online" => {
+                    let user = self.get_json_field_s(&reader_json, "user")?;
+                    let password = self.get_json_field_s(&reader_json, "password")?;
+                    let server = self.get_json_field_s(&reader_json, "server")?;
+                    // std::unimplemented!();
+                    // if source_json.get("arch").is_some() {
+                    //     let arch = self.get_json_field_s(&source_json, "arch")?;
+
+                    //     let arch_get_log = match arch {
+                    //         "path" => std::unimplemented!(),
+                    //         "online" => std::unimplemented!(),
+                    //         _ => return olr_err!(30001, "Field 'arch' ({}) expected: one of {{path, online}}", arch).into()
+                    //     };
+
+                    //     arch_get_log
+                    // } else {
+                    //     arch_get_log = ReplicatorOnline::arch_get_logOnline;
+                    // }
+                    
+                    let replicator = OnlineReplicator::new(context_ptr.clone(), /*archGetLog,*/ builder_ptr.clone(), metadata_ptr.clone(),
+                                                        alias, source_name, user, password, server, main_sender);
+                    // replicator->initialize();
+                    // mainProcessMapping(readerJson);
+                    replicator
+                },
+                _ => std::unimplemented!()
+            };
+
+            let replicator_handle = spawn(Box::new(replicator))?;
+            handle_vector.push(replicator_handle);
 
         }
 
         info!("Start Replication!");
+
+        let res = main_reciver.recv();
+        
+        let res : Result<(), OLRError> = match res {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(thread_err)) => olr_err!(040001, "Thread error: {}", thread_err.to_string()).into(),
+            Err(channel_err) => {error!("Recieve error: {}", channel_err); Ok(())}
+        };
+
+        for i in handle_vector {
+            let result = i.join().expect("Join error");
+
+            result?;
+        }
+
+        if let Ok(()) = res  {
+            info!("Ok recive");
+        } else {
+            error!("Some error");
+            return res.err().unwrap().into();
+        }
+
+        
+
 
         Ok(())
     }
