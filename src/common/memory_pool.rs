@@ -1,76 +1,68 @@
-use std::{alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ptr::NonNull};
+use std::{alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
 use log::{trace, warn};
 
 use crate::olr_err;
 use super::{constants, errors::OLRError};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct MemoryChunk {
-    data : NonNull<[u8]>,
-}
+#[derive(Debug)]
+pub struct MemoryChunk(NonNull<[u8]>);
 
-unsafe impl Sync for MemoryChunk {}
-unsafe impl Send for MemoryChunk {}
+// Safety: No one besides us has the raw pointer, so we can safely transfer the
+// MemoryChunk to another thread.
+unsafe impl Send for MemoryChunk where Box<[u8]> : Send {}
+
+// Safety: `MemoryChunk` itself does not use any interior mutability whatsoever:
+// all the mutations are performed through an exclusive reference (`&mut`). This
+// means it suffices that `T` be `Sync` for `MemoryChunk` to be `Sync`:
+unsafe impl Sync for MemoryChunk where Box<[u8]>: Sync  {}
 
 impl MemoryChunk {
     pub const MEMORY_CHUNK_SIZE : usize = constants::MEMORY_CHUNK_SIZE as usize;
     pub const MEMORY_ALIGNMENT : usize = constants::MEMORY_ALIGNMENT as usize;
     pub const MEMORY_LAYOUT : Layout = unsafe {Layout::from_size_align_unchecked(Self::MEMORY_CHUNK_SIZE, Self::MEMORY_ALIGNMENT)};
 
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, OLRError> {
         let data_ptr : NonNull<[u8]>;
 
         unsafe {
-            let memory = alloc_zeroed(Self::MEMORY_LAYOUT) ;
+            let memory: *mut u8 = alloc_zeroed(Self::MEMORY_LAYOUT);
 
             if memory.is_null() {
-                handle_alloc_error(Self::MEMORY_LAYOUT);
+                return olr_err!(040001, "Memory chunk allocation failed").into();
             }
 
             data_ptr = NonNull::new_unchecked(std::ptr::slice_from_raw_parts_mut(memory, Self::MEMORY_LAYOUT.size()));
         }
 
-        Self {
-            data : data_ptr
-        }
+        Ok(Self(data_ptr))
     }
+}
 
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        unsafe { self.data.as_mut() }
+impl Deref for MemoryChunk {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.0.as_ref() }
     }
+}
 
-    pub fn as_slice(&self) -> &[u8] {
-        unsafe { self.data.as_ref() }
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut [u8] {
-        self.data.as_ptr()
-    }
-
-    pub fn as_raw_mut_ptr(&mut self) -> *mut u8 {
-        self.data.as_ptr() as *mut u8
-    }
-
-    pub fn as_ptr(&self) -> *const [u8] {
-        self.data.as_ptr()
-    }
-
-    pub fn as_raw_ptr(&self) -> *const u8 {
-        self.data.as_ptr() as *const u8
+impl DerefMut for MemoryChunk {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.0.as_mut() }
     }
 }
 
 impl Drop for MemoryChunk {
     fn drop(&mut self) {
         unsafe {
-            dealloc(self.as_mut_ptr() as *mut u8, Self::MEMORY_LAYOUT);
+            dealloc(self.as_mut_ptr(), Self::MEMORY_LAYOUT);
         }
     }
 }
 
 impl Display for MemoryChunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let data = self.as_slice();
+        let data = self.as_ref();
 
         write!(f, "\n")?;
         for i in data.chunks(64) {
@@ -85,7 +77,7 @@ impl Display for MemoryChunk {
 
 impl UpperHex for MemoryChunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:X}", self.data.as_ptr() as *const u8 as usize)
+        write!(f, "{:X}", self.0.as_ptr() as *const u8 as usize)
     }
 }
 
@@ -122,7 +114,7 @@ impl MemoryPool {
         };
 
         for _ in 0 .. result.memory_chunks_min as usize {
-            let chunk = MemoryChunk::new();
+            let chunk = MemoryChunk::new()?;
             result.memory_chunks.push_back(chunk);
             result.memory_chunks_allocated += 1;
             result.memory_chunks_free += 1;
@@ -137,7 +129,7 @@ impl MemoryPool {
         }
 
         if self.memory_chunks_free == 0 {
-            let chunk = MemoryChunk::new();
+            let chunk = MemoryChunk::new()?;
             self.memory_chunks.push_back(chunk);
             self.memory_chunks_allocated += 1;
             (self.memory_chunks_allocated - 1) as usize
@@ -147,21 +139,21 @@ impl MemoryPool {
         };
 
         let result = self.memory_chunks.pop_front().unwrap();
-        trace!("Allocate chunk. Address: {:X}. Free/Allocated/Max: {}/{}/{}", 
-            result.as_raw_ptr() as usize, self.memory_chunks_free, self.memory_chunks_allocated, self.memory_chunks_max );
+        trace!("Borrow a chunk. Address: {:?}. Free/Allocated/Max: {}/{}/{}", 
+            result.as_ptr(), self.memory_chunks_free, self.memory_chunks_allocated, self.memory_chunks_max );
         
         Ok(result)
     }
 
     pub fn free_chunk(&mut self, chunk : MemoryChunk) {
-        trace!("Free chunk. Address: {:0X}. Free/Allocated/Max: {}/{}/{}", 
-            chunk.as_raw_ptr() as usize, self.memory_chunks_free, self.memory_chunks_allocated, self.memory_chunks_max );
+        trace!("Take back chunk. Address: {:X?}. Free/Allocated/Max: {}/{}/{}", 
+            chunk.as_ptr(), self.memory_chunks_free, self.memory_chunks_allocated, self.memory_chunks_max );
 
         if self.memory_chunks_free >= self.memory_chunks_min || self.memory_chunks_allocated > self.memory_chunks_max {
             let _ = chunk;
             self.memory_chunks_allocated -= 1;
         } else {
-            self.memory_chunks[self.memory_chunks_free as usize] = chunk;
+            self.memory_chunks.push_back(chunk);
             self.memory_chunks_free += 1;
         }
 

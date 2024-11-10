@@ -10,10 +10,6 @@ pub struct BuilderChunk {
     data    : MemoryChunk,
 }
 
-
-unsafe impl Sync for BuilderChunk {}
-unsafe impl Send for BuilderChunk {}
-
 impl BuilderChunk {
     pub fn from_mem_chunk(chunk : MemoryChunk) -> Self {
         Self {
@@ -33,7 +29,7 @@ impl Into<MemoryChunk> for BuilderChunk {
 
 impl Display for BuilderChunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BuilderChunk : {{ id: {}, size: {}, start: {}, data: {:?}}}", self.id, self.size, self.size, self.data)
+        write!(f, "BuilderChunk : {{ id: {}, size: {}, start: {}, data: {:?}}}", self.id, self.size, self.start, self.data)
     }
 }
 
