@@ -3,9 +3,9 @@ use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::task::Context;
 use log::error;
-use log::{debug, info};
+use log::trace;
+use log::info;
 
 use crate::builder;
 use crate::common::constants;
@@ -13,10 +13,10 @@ use crate::common::errors::OLRError;
 use crate::common::thread::spawn;
 use crate::common::types;
 use crate::ctx::Ctx;
+use crate::ctx::Dump;
 use crate::locales::Locales;
 use crate::metadata;
 use crate::olr_err;
-use crate::replicators;
 use crate::replicators::online_replicator::OnlineReplicator;
 
 pub struct OracleLogicalReplicator {
@@ -83,13 +83,12 @@ impl OracleLogicalReplicator {
     }
 
     pub fn run(&self) -> Result<(), OLRError> {
+        let locales_ptr = Arc::new(RwLock::new(Locales::new()));
+        // let context_ptr = Arc::new(RwLock::new(Ctx::new()));
 
         let mut handle_vector = Vec::new();
 
         let (main_sender, main_reciver): (Sender<Result<(), OLRError>>, Receiver<Result<(), OLRError>>) = mpsc::channel();
-
-        let locales_ptr = Arc::new(RwLock::new(Locales::new()));
-        let context_ptr = Arc::new(RwLock::new(Ctx::new()));
 
         let config = std::fs::read_to_string(&self.config_filename)
             .or(olr_err!(000001, "Can not read config file").into())?;
@@ -97,7 +96,7 @@ impl OracleLogicalReplicator {
         let document: serde_json::Value = serde_json::from_str(&config)
             .or(olr_err!(000001, "Can not deserialize data").into())?;
 
-        debug!("{:#}", document);
+        trace!("{:#}", document);
 
         self.check_config_fields(&document, ["version", "dump-path", "dump-raw-data", 
             "dump-redo-log", "log-level", "trace", "source", "target"])?;
@@ -110,42 +109,42 @@ impl OracleLogicalReplicator {
         }
 
         // Dump parameters
+        let mut dump = Dump::default();
         if document.get("dump-redo-log").is_some() {
-            let mut context = context_ptr.write().unwrap();
-            context.dump.level = self.get_json_field_u64(&document, "dump-redo-log")?;
+            dump.level = self.get_json_field_u64(&document, "dump-redo-log")?;
 
-            if context.dump.level > 2 {
-                return olr_err!(030001, "Field 'dump-redo-log' ({}) expected: one of {{0 .. 2}}", context.dump.level).into();
+            if dump.level > 2 {
+                return olr_err!(030001, "Field 'dump-redo-log' ({}) expected: one of {{0 .. 2}}", dump.level).into();
             }
 
-            if context.dump.level > 0 {
+            if dump.level > 0 {
                 if document.get("dump-path").is_some() {
-                    context.dump.path = self.get_json_field_s(&document, "dump-path")?.to_string();
+                    dump.path = self.get_json_field_s(&document, "dump-path")?.to_string();
                 }
 
                 if document.get("dump-raw-data").is_some() {
-                    context.dump.is_raw = self.get_json_field_u64(&document, "dump-raw-data")? != 0;
+                    dump.is_raw = self.get_json_field_u64(&document, "dump-raw-data")? != 0;
                 }
             }
         }
 
+        let mut log_level = 3;
+        let mut trace = 0;
         if document.get("log-level").is_some() {
-            let mut context = context_ptr.write().unwrap();
-            context.log_level = self.get_json_field_u64(&document, "log-level")?;
-            if context.log_level > 4 {
-                return olr_err!(030001, "Field 'log-level' ({}) expected: one of {{0 .. 4}}", context.log_level).into();
+            log_level = self.get_json_field_u64(&document, "log-level")?;
+            if log_level > 4 {
+                return olr_err!(030001, "Field 'log-level' ({}) expected: one of {{0 .. 4}}", log_level).into();
             }
         }
 
         if document.get("trace").is_some() {
-            let mut context = context_ptr.write().unwrap();
-            context.trace = self.get_json_field_u64(&document, "trace")?;
-            if context.trace > 524287 {
-                return olr_err!(030001, "Field 'trace' ({}) expected: one of {{0 .. 524287}}", context.trace).into();
+            trace = self.get_json_field_u64(&document, "trace")?;
+            if trace > 524287 {
+                return olr_err!(030001, "Field 'trace' ({}) expected: one of {{0 .. 524287}}", trace).into();
             }
         }
 
-        // Iterate through sources
+        // Source data
         let source_array_json = self.get_json_field_a(&document, "source")?;
         if source_array_json.len() != 1 {
             return olr_err!(030001, "Field 'source' ({}) expected: one element", source_array_json.len()).into();
@@ -153,7 +152,6 @@ impl OracleLogicalReplicator {
         let source_json = source_array_json.get(0).unwrap();
 
         {
-
             self.check_config_fields(&source_json, ["alias", "memory", "name", "reader", "flags", "skip-rollback", "state", "debug",
                                                     "transaction-max-mb", "metrics", "format", "redo-read-sleep-us", "arch-read-sleep-us",
                                                     "arch-read-tries", "redo-verify-delay-us", "refresh-interval-us", "arch",
@@ -167,7 +165,7 @@ impl OracleLogicalReplicator {
             let mut memory_max_mb : u64 = 1024;
             let mut read_buffer_max : u64 = memory_max_mb / 4 / constants::MEMORY_CHUNK_SIZE_MB;
 
-            // MEMORY
+            // Memory data
             if source_json.get("memory").is_some() {
                 let memory_json = self.get_json_field_o(&source_json, "memory")?;
 
@@ -212,27 +210,27 @@ impl OracleLogicalReplicator {
                                                     "con-id", "type", "redo-copy-path", "db-timezone", "host-timezone", "log-timezone",
                                                     "user", "password", "server", "redo-log", "path-mapping", "log-archive-format"])?;
 
+            let mut flags = 0;
+            let mut skip_rollback = 0;
+            let mut disable_checks = 0;
             if source_json.get("flags").is_some() {
-                let mut context = context_ptr.write().unwrap();
-                context.flags = self.get_json_field_u64(source_json, "flags")?;
-                if context.flags > 524287 {
-                    return olr_err!(030001, "Field 'flags' ({}) expected: one of {{0 .. 524287}}", context.flags).into();
+                flags = self.get_json_field_u64(source_json, "flags")?;
+                if flags > 0x7FFFF {
+                    return olr_err!(030001, "Field 'flags' ({}) expected: one of {{0 .. 524287}}", flags).into();
                 }
             }
 
             if source_json.get("skip-rollback").is_some() {
-                let mut context = context_ptr.write().unwrap();
-                context.skip_rollback = self.get_json_field_u64(source_json, "skip-rollback")?;
-                if context.skip_rollback > 1 {
-                    return olr_err!(030001, "Field 'skip-rollback' ({}) expected: one of {{0, 1}}", context.flags).into();
+                skip_rollback = self.get_json_field_u64(source_json, "skip-rollback")?;
+                if skip_rollback > 1 {
+                    return olr_err!(030001, "Field 'skip-rollback' ({}) expected: one of {{0, 1}}", flags).into();
                 }
             }
 
             if reader_json.get("disable-checks").is_some() {
-                let mut context = context_ptr.write().unwrap();
-                context.disable_checks = self.get_json_field_u64(reader_json, "disable-checks")?;
-                if context.disable_checks > 15 {
-                    return olr_err!(030001, "Field 'disable-checks' ({}) expected: one of {{0 .. 15}}", context.flags).into();
+                disable_checks = self.get_json_field_u64(reader_json, "disable-checks")?;
+                if disable_checks > 15 {
+                    return olr_err!(030001, "Field 'disable-checks' ({}) expected: one of {{0 .. 15}}", flags).into();
                 }
             }
 
@@ -273,6 +271,10 @@ impl OracleLogicalReplicator {
 
             let mut state_path = "checkpoint".to_string();
 
+            let mut checkpoint_interval_s = 600;
+            let mut checkpoint_interval_mb = 500;
+            let mut checkpoint_keep = 100;
+            let mut schema_force_interval = 20;
             if source_json.get("state").is_some() {
                 let state_json = self.get_json_field_o(source_json, "state")?;
 
@@ -283,21 +285,20 @@ impl OracleLogicalReplicator {
                     state_path = self.get_json_field_s(&state_json, "path")?;
                 }
 
-                let mut context = context_ptr.write().unwrap();
                 if state_json.get("interval-s").is_some() {
-                    context.checkpoint_interval_s = self.get_json_field_u64(&state_json, "interval-s")?;
+                    checkpoint_interval_s = self.get_json_field_u64(&state_json, "interval-s")?;
                 }
 
                 if state_json.get("interval-mb").is_some() {
-                    context.checkpoint_interval_mb = self.get_json_field_u64(&state_json, "interval-mb")?;
+                    checkpoint_interval_mb = self.get_json_field_u64(&state_json, "interval-mb")?;
                 }
 
                 if state_json.get("keep-checkpoints").is_some() {
-                    context.checkpoint_keep = self.get_json_field_u64(&state_json, "keep-checkpoints")?;
+                    checkpoint_keep = self.get_json_field_u64(&state_json, "keep-checkpoints")?;
                 }
 
                 if state_json.get("schema-force-interval").is_some() {
-                    context.schema_force_interval = self.get_json_field_u64(&state_json, "schema-force-interval")?;
+                    schema_force_interval = self.get_json_field_u64(&state_json, "schema-force-interval")?;
                 }
             }
 
@@ -307,22 +308,21 @@ impl OracleLogicalReplicator {
                 -1
             };
 
-            // MEMORY MANAGER
-            {
-                let mut context = context_ptr.write().unwrap();
-                context.initialize(memory_min_mb, memory_max_mb, read_buffer_max)?;
-            }
+            // Context init
+            let context_ptr = Arc::new(RwLock::new(Ctx::new(
+                dump, log_level, trace, flags, skip_rollback, disable_checks, 
+                checkpoint_interval_s, checkpoint_interval_mb, checkpoint_keep,
+                schema_force_interval, memory_min_mb, memory_max_mb, read_buffer_max
+            )?));
             
-            // METADATA
-            let metadata_ptr = Arc::new(RwLock::new(metadata::Metadata::new(context_ptr.clone(), locales_ptr.clone(), source_name.to_string(), container_id, start_scn,
-                                              start_sequence, start_time.to_string(), start_time_rel)));
+            // Metadata init
+            let metadata_ptr = Arc::new(RwLock::new(
+                metadata::Metadata::new(context_ptr.clone(), locales_ptr.clone(), 
+                           source_name.to_string(), container_id, start_scn,
+                                        start_sequence, start_time.to_string(), start_time_rel))
+            );
 
-            {
-                let mut metadata = metadata_ptr.write().unwrap();
-                metadata.reset_objects();
-            }
-
-            // FORMAT
+            // Format
             let format_json = self.get_json_field_o(&source_json, "format")?;
 
             self.check_config_fields(&format_json, ["db", "attributes", "interval-dts", "interval-ytm", "message", "rid", "xid",
@@ -533,9 +533,6 @@ impl OracleLogicalReplicator {
             error!("Some error");
             return res.err().unwrap().into();
         }
-
-        
-
 
         Ok(())
     }

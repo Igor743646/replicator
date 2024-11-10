@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::{io::Write, process::exit};
+use std::io::Write;
 use log::{error, info};
 
 
@@ -11,6 +11,7 @@ mod metadata;
 mod locales;
 mod oradefs;
 mod builder;
+mod parser;
 mod replicators;
 use common::errors::OLRError;
 

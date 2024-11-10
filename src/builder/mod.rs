@@ -9,15 +9,15 @@ use crate::{common::errors::OLRError, ctx::Ctx, locales::Locales, metadata::Meta
 pub mod formats;
 pub mod queue;
 
-pub struct JsonBuilder<'a> {
+pub struct JsonBuilder {
     context_ptr : Arc<RwLock<Ctx>>, 
     locales_ptr : Arc<RwLock<Locales>>, 
     metadata_ptr : Arc<RwLock<Metadata>>, 
     formats : BuilderFormats,
-    queue : BuilderQueue<'a>,
+    queue : BuilderQueue,
 }
 
-impl<'a> JsonBuilder<'a> {
+impl JsonBuilder {
     pub fn new(context_ptr : Arc<RwLock<Ctx>>, locales_ptr : Arc<RwLock<Locales>>, metadata_ptr : Arc<RwLock<Metadata>>, 
                 db_format : u8, attributes_format : u8, interval_dts_format : u8, interval_ytm_format : u8, message_format : u8, 
                 rid_format : u8, xid_format : u8, timestamp_format : u8, timestamp_tz_format : u8, timestamp_all : u8, char_format : u8,

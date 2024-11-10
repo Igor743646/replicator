@@ -1,5 +1,5 @@
-use std::{fmt::Display, sync::{Arc, RwLock}};
-use crate::{common::{errors::OLRError, memory_pool::MemoryChunk}, ctx::Ctx};
+use std::{collections::VecDeque, fmt::Display, sync::{Arc, RwLock}};
+use crate::{common::{errors::OLRError, memory_pool::MemoryChunk}, ctx::Ctx, olr_err};
 
 use log::info;
 
@@ -7,47 +7,49 @@ pub struct BuilderChunk {
     id      : u64,
     size    : usize,
     start   : usize,
-    data    : *mut u8,
-    next    : *mut BuilderChunk,
+    data    : MemoryChunk,
 }
+
 
 unsafe impl Sync for BuilderChunk {}
 unsafe impl Send for BuilderChunk {}
 
 impl BuilderChunk {
-    pub fn from_mem_chunk(mut chunk : MemoryChunk) -> &'static mut Self {
-        unsafe {
-            let result = (chunk.as_mut_ptr() as *mut BuilderChunk).as_mut().unwrap();
-            result.data = chunk.as_mut_ptr().add(size_of::<BuilderChunk>());
-            result
+    pub fn from_mem_chunk(chunk : MemoryChunk) -> Self {
+        Self {
+            id : 0,
+            size : 0,
+            start : 0,
+            data : chunk,
         }
     }
+}
 
-    pub fn as_mem_chunk(&self) -> MemoryChunk {
-        MemoryChunk::new(self as *const BuilderChunk as *mut u8)
+impl Into<MemoryChunk> for BuilderChunk {
+    fn into(self) -> MemoryChunk {
+        self.data
     }
 }
 
 impl Display for BuilderChunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "BuilderChunk : {{ id: {}, size: {}, start: {}, data: {:?}, next: {:?}}}", self.id, self.size, self.size, self.data, self.next)
+        write!(f, "BuilderChunk : {{ id: {}, size: {}, start: {}, data: {:?}}}", self.id, self.size, self.size, self.data)
     }
 }
 
-#[derive(Default)]
-pub struct BuilderQueue<'a> {
+pub struct BuilderQueue {
     context_ptr : Arc<RwLock<Ctx>>, 
     chunks_allocated : u64,
-    first_chunk : Option<&'a BuilderChunk>,
-    last_chunk : Option<&'a BuilderChunk>,
+    queue : VecDeque<BuilderChunk>,
 }
 
-impl<'a> BuilderQueue<'a> {
+impl BuilderQueue {
     pub fn new(context_ptr : Arc<RwLock<Ctx>>) -> Result<Self, OLRError> {
         info!("Initialize BuilderQueue");
         
-        let chunk = {
-            let mut context  = context_ptr.write().unwrap();
+        let chunk: MemoryChunk = {
+            let mut context  = context_ptr.write()
+                                                                     .or(olr_err!(040001, "Error with other thread").into())?;
             context.get_chunk()?
         };
 
@@ -56,8 +58,7 @@ impl<'a> BuilderQueue<'a> {
         Ok(Self {
             context_ptr,
             chunks_allocated : 1,
-            first_chunk : Some(bchunk), 
-            last_chunk : Some(bchunk),
+            queue : VecDeque::from([bchunk]),
         })
     }
 }

@@ -16,8 +16,8 @@
           "type": "json"
         },
         "memory": {
-          "min-mb": 64,
-          "max-mb": 1024
+          "min-mb": 16,
+          "max-mb": 17
         },
         "filter": {
           "table": [

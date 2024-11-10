@@ -2,9 +2,6 @@ use std::sync::{Arc, RwLock};
 
 use crate::{common::{constants, types::{TypeConId, TypeScn, TypeSeq}}, ctx::Ctx, locales::Locales, oradefs::db_object::DataBaseObject};
 
-// use super::{ctx::Ctx, locales::Locales, types::{TypeConId, TypeScn, TypeSeq}};
-// use super::oradefs::db_object::DataBaseObject;
-
 #[derive(Debug)]
 pub struct Metadata {
     context_ptr : Arc<RwLock<Ctx>>,
@@ -27,7 +24,9 @@ impl Metadata {
         start_sequence  : TypeSeq,
         start_time      : String,
         start_time_rel  : u64) -> Self {
-        Self {context_ptr, locales_ptr, source_name, container_id, start_scn, start_sequence, start_time, start_time_rel, schema_objects : Vec::new()}
+        let mut result = Self {context_ptr, locales_ptr, source_name, container_id, start_scn, start_sequence, start_time, start_time_rel, schema_objects : Vec::new()};
+        result.reset_objects();
+        result
     }
 
     pub fn reset_objects(&mut self) {

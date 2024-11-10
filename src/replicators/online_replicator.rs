@@ -3,9 +3,9 @@ use log::info;
 
 use crate::{builder::JsonBuilder, common::{errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err};
 
-pub struct OnlineReplicator<'a> {
+pub struct OnlineReplicator {
     context_ptr     : Arc<RwLock<Ctx>>, 
-    builder_ptr     : Arc<RwLock<JsonBuilder<'a>>>, 
+    builder_ptr     : Arc<RwLock<JsonBuilder>>, 
     metadata_ptr    : Arc<RwLock<Metadata>>,
     alias           : String, 
     name            : String, 
@@ -16,8 +16,8 @@ pub struct OnlineReplicator<'a> {
     main_channel    : Sender<Result<(), OLRError>>,
 } 
 
-impl<'a> OnlineReplicator<'a> {
-    pub fn new(context_ptr : Arc<RwLock<Ctx>>, builder_ptr : Arc<RwLock<JsonBuilder<'a>>>, metadata_ptr : Arc<RwLock<Metadata>>,
+impl OnlineReplicator {
+    pub fn new(context_ptr : Arc<RwLock<Ctx>>, builder_ptr : Arc<RwLock<JsonBuilder>>, metadata_ptr : Arc<RwLock<Metadata>>,
         alias : String, name : String, user : String, password : String, server : String, main_channel : Sender<Result<(), OLRError>>) -> Self {
         Self {
             context_ptr, builder_ptr, metadata_ptr,
@@ -26,7 +26,7 @@ impl<'a> OnlineReplicator<'a> {
     }
 }
 
-impl<'a> Thread for OnlineReplicator<'a> {
+impl Thread for OnlineReplicator {
     fn run(&self) -> Result<(), OLRError> {
         let mut cycles = 0;
         loop {

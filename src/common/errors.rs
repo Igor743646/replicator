@@ -14,10 +14,6 @@ impl OLRError {
         let backtrace = Backtrace::force_capture().to_string();
         Self { code, message, backtrace }
     }
-
-    pub fn code(&self) -> i32 {
-        return self.code;
-    }
 }
 
 impl<T> Into<Result<T, OLRError>> for OLRError {
