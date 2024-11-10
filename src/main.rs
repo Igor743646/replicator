@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::io::Write;
+use std::u32;
 use log::{error, info};
 
 
@@ -14,6 +15,7 @@ mod builder;
 mod parser;
 mod replicators;
 use common::errors::OLRError;
+use common::OLRErrorCode::*;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -27,13 +29,13 @@ fn start(args : ReplicatorArgs) -> Result<(), OLRError> {
     info!("OS: {}; Arch: {}; Family: {}", std::env::consts::OS, std::env::consts::ARCH, std::env::consts::FAMILY);
 
     if !args.file.ends_with(".json") {
-        return olr_err!(000001, "Wrong config file name: {}", args.file).into();
+        return olr_err!(WrongFileName, "Wrong config file name: {}", args.file).into();
     } 
 
     info!("Config file name: {}", args.file);
 
-    if !std::fs::metadata(&args.file).is_ok() {
-        return olr_err!(000001, "File does not exist: {}", args.file).into();
+    if let Err(err) = std::fs::metadata(&args.file) {
+        return olr_err!(GetFileMetadata, "Get metadata from file: {} error: {}", args.file, err.to_string()).into();
     }
 
     let replicator = oracle_logical_replicator::OracleLogicalReplicator::new(args.file);
@@ -54,8 +56,8 @@ fn main() {
                     log::Level::Debug => "\u{001b}[38;5;020mDEBUG",
                     log::Level::Trace => "\u{001b}[38;5;15mTRACE",
                 },
-                record.file().unwrap(),
-                record.line().unwrap(),
+                record.file().unwrap_or("UNKNOWN FILE"),
+                record.line().unwrap_or(u32::MAX),
                 record.args(),
             )
         })

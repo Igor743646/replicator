@@ -5,7 +5,7 @@ use charset::CharacterMapper;
 use charset_7bit::CharSet7Bit;
 
 use crate::{common::errors::OLRError, olr_err};
-
+use crate::common::OLRErrorCode::*;
 
 #[derive(Default)]
 pub struct Locales {
@@ -41,7 +41,7 @@ impl Locales {
             205 => Ok(Box::new(CharSet7Bit::new("N7SIEMENS9780X", charset_7bit::UNICODE_MAP_N7SIEMENS9780X))),
             206 => Ok(Box::new(CharSet7Bit::new("I7SIEMENS9780X", charset_7bit::UNICODE_MAP_I7SIEMENS9780X))),
             207 => Ok(Box::new(CharSet7Bit::new("D7SIEMENS9780X", charset_7bit::UNICODE_MAP_D7SIEMENS9780X))),
-            _ => olr_err!(010003, "Unknown charset: {}", charset_id).into()
+            _ => olr_err!(UnknownCharset, "Unknown charset: {}", charset_id).into()
         }
     }
 }

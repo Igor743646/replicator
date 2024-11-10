@@ -1,7 +1,7 @@
 use std::thread::JoinHandle;
 
 use crate::olr_err;
-
+use crate::common::OLRErrorCode::*;
 use super::errors::OLRError;
 
 pub trait Thread 
@@ -20,7 +20,7 @@ pub fn spawn(thread : Box<dyn Thread + Send>) -> Result<JoinHandle<Result<(), OL
             thread.run()?;
             Ok(())
         })
-        .or_else(|err| olr_err!(040001, "Error while spawn thread {}: {}", alias, err.to_string()).into())?;
+        .or_else(|err| olr_err!(ThreadSpawn, "Error while spawn thread {}: {}", alias, err.to_string()).into())?;
 
     Ok(handle)
 }

@@ -6,10 +6,11 @@ use std::sync::RwLock;
 use log::error;
 use log::trace;
 use log::info;
+use log::warn;
 
 use crate::builder;
 use crate::common::constants;
-use crate::common::errors::OLRError;
+use crate::common::errors::{OLRError, OLRErrorCode::*};
 use crate::common::thread::spawn;
 use crate::common::types;
 use crate::ctx::Ctx;
@@ -30,7 +31,7 @@ impl OracleLogicalReplicator {
 
     fn check_config_fields<const T : usize>(&self, config_value : &serde_json::Value, fields : [&str; T]) -> Result<(), OLRError> {
         let map = config_value.as_object()
-            .ok_or(olr_err!(000001, "Data not a map: {}", config_value))?;
+            .ok_or(olr_err!(Internal, "Data not a map: {}", config_value))?;
 
         for (child, _) in map {
 
@@ -38,7 +39,7 @@ impl OracleLogicalReplicator {
             let search_result = fields.contains(&child.as_str());
 
             if !search_result {
-                return olr_err!(000001, "Find unknown field: {}", child).into();
+                return olr_err!(UnknownConfigField, "Find unknown field: {}", child).into();
             }
         }
 
@@ -47,39 +48,39 @@ impl OracleLogicalReplicator {
 
     fn get_json_field_a<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<&'a Vec<serde_json::Value>, OLRError> {
         value.get(name)
-            .ok_or(olr_err!(000001, "Not field {} in config", name))?
+            .ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?
             .as_array()
-            .ok_or(olr_err!(000001, "Field {} not an array", name))
+            .ok_or(olr_err!(WrongConfigFieldType, "Field {} not an array", name))
     }
 
     fn get_json_field_o<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<&'a serde_json::Value, OLRError> {
-        let res = value.get(name).ok_or(olr_err!(000001, "Not field {} in config", name))?;
+        let res = value.get(name).ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?;
         if res.is_object() {
             return Ok(res);
         } else {
-            return olr_err!(000001, "Field {} not an object", name).into();
+            return olr_err!(WrongConfigFieldType, "Field {} not an object", name).into();
         }
     }
 
     fn get_json_field_s<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<String, OLRError> {
         Ok(value.get(name)
-                    .ok_or(olr_err!(000001, "Not field {} in config", name))?
+                    .ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?
                     .as_str()
-                    .ok_or(olr_err!(000001, "Field {} not a string", name))?.to_string())
+                    .ok_or(olr_err!(WrongConfigFieldType, "Field {} not a string", name))?.to_string())
     }
 
     fn get_json_field_i64(&self, value : &serde_json::Value, name : &str) -> Result<i64, OLRError> {
         value.get(name)
-            .ok_or(olr_err!(000001, "Not field {} in config", name))?
+            .ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?
             .as_i64()
-            .ok_or(olr_err!(000001, "Field {} not a i64", name))
+            .ok_or(olr_err!(WrongConfigFieldType, "Field {} not a i64", name))
     }
 
     fn get_json_field_u64(&self, value : &serde_json::Value, name : &str) -> Result<u64, OLRError> {
         value.get(name)
-            .ok_or(olr_err!(000001, "Not field {} in config", name))?
+            .ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?
             .as_u64()
-            .ok_or(olr_err!(000001, "Field {} not a u64", name))
+            .ok_or(olr_err!(WrongConfigFieldType, "Field {} not a u64", name))
     }
 
     pub fn run(&self) -> Result<(), OLRError> {
@@ -91,10 +92,10 @@ impl OracleLogicalReplicator {
         let (main_sender, main_reciver): (Sender<Result<(), OLRError>>, Receiver<Result<(), OLRError>>) = mpsc::channel();
 
         let config = std::fs::read_to_string(&self.config_filename)
-            .or(olr_err!(000001, "Can not read config file").into())?;
+            .or(olr_err!(FileReading, "Can not read config file").into())?;
 
         let document: serde_json::Value = serde_json::from_str(&config)
-            .or(olr_err!(000001, "Can not deserialize data").into())?;
+            .or(olr_err!(FileDeserialization, "Can not deserialize data").into())?;
 
         trace!("{:#}", document);
 
@@ -104,7 +105,7 @@ impl OracleLogicalReplicator {
         // Check version
         let version = self.get_json_field_s(&document, "version")?;
         if version != env!("CARGO_PKG_VERSION") {
-            return olr_err!(030001, "Field 'version' ({}) not equal builded version: {}", 
+            return olr_err!(NotValidField, "Field 'version' ({}) not equal builded version: {}", 
                                                 version, env!("CARGO_PKG_VERSION")).into();
         }
 
@@ -114,7 +115,7 @@ impl OracleLogicalReplicator {
             dump.level = self.get_json_field_u64(&document, "dump-redo-log")?;
 
             if dump.level > 2 {
-                return olr_err!(030001, "Field 'dump-redo-log' ({}) expected: one of {{0 .. 2}}", dump.level).into();
+                return olr_err!(NotValidField, "Field 'dump-redo-log' ({}) expected: one of {{0 .. 2}}", dump.level).into();
             }
 
             if dump.level > 0 {
@@ -133,21 +134,21 @@ impl OracleLogicalReplicator {
         if document.get("log-level").is_some() {
             log_level = self.get_json_field_u64(&document, "log-level")?;
             if log_level > 4 {
-                return olr_err!(030001, "Field 'log-level' ({}) expected: one of {{0 .. 4}}", log_level).into();
+                return olr_err!(NotValidField, "Field 'log-level' ({}) expected: one of {{0 .. 4}}", log_level).into();
             }
         }
 
         if document.get("trace").is_some() {
             trace = self.get_json_field_u64(&document, "trace")?;
             if trace > 524287 {
-                return olr_err!(030001, "Field 'trace' ({}) expected: one of {{0 .. 524287}}", trace).into();
+                return olr_err!(NotValidField, "Field 'trace' ({}) expected: one of {{0 .. 524287}}", trace).into();
             }
         }
 
         // Source data
         let source_array_json = self.get_json_field_a(&document, "source")?;
         if source_array_json.len() != 1 {
-            return olr_err!(030001, "Field 'source' ({}) expected: one element", source_array_json.len()).into();
+            return olr_err!(NotValidField, "Field 'source' ({}) expected: one element", source_array_json.len()).into();
         }
         let source_json = source_array_json.get(0).unwrap();
 
@@ -175,7 +176,7 @@ impl OracleLogicalReplicator {
                     memory_min_mb = self.get_json_field_u64(&memory_json, "min-mb")?;
                     memory_min_mb = (memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB) * constants::MEMORY_CHUNK_SIZE_MB;
                     if memory_min_mb < constants::MEMORY_CHUNK_MIN_MB {
-                        return olr_err!(030001, "Field 'min-mb' ({}) expected: at least {}", memory_min_mb, constants::MEMORY_CHUNK_MIN_MB).into();
+                        return olr_err!(NotValidField, "Field 'min-mb' ({}) expected: at least {}", memory_min_mb, constants::MEMORY_CHUNK_MIN_MB).into();
                     }
                 }
 
@@ -183,7 +184,7 @@ impl OracleLogicalReplicator {
                     memory_max_mb = self.get_json_field_u64(&memory_json, "max-mb")?;
                     memory_max_mb = (memory_max_mb / constants::MEMORY_CHUNK_SIZE_MB) * constants::MEMORY_CHUNK_SIZE_MB;
                     if memory_max_mb < memory_min_mb {
-                        return olr_err!(030001, "Field 'max-mb' ({}) expected: at least like min-mb {}", memory_max_mb, memory_min_mb).into();
+                        return olr_err!(NotValidField, "Field 'max-mb' ({}) expected: at least like min-mb {}", memory_max_mb, memory_min_mb).into();
                     }
                     read_buffer_max = memory_max_mb / 4 / constants::MEMORY_CHUNK_SIZE_MB;
                     if read_buffer_max > 32 / constants::MEMORY_CHUNK_SIZE_MB {
@@ -194,11 +195,11 @@ impl OracleLogicalReplicator {
                 if memory_json.get("read-buffer-max-mb").is_some() {
                     read_buffer_max = self.get_json_field_u64(&memory_json, "read-buffer-max-mb")? / constants::MEMORY_CHUNK_SIZE_MB;
                     if read_buffer_max * constants::MEMORY_CHUNK_SIZE_MB > memory_max_mb {
-                        return olr_err!(030001, "Field 'read-buffer-max-mb' ({}) expected: not greater than max-mb {}", read_buffer_max * constants::MEMORY_CHUNK_SIZE_MB, memory_max_mb).into();
+                        return olr_err!(NotValidField, "Field 'read-buffer-max-mb' ({}) expected: not greater than max-mb {}", read_buffer_max * constants::MEMORY_CHUNK_SIZE_MB, memory_max_mb).into();
                     }
 
                     if read_buffer_max <= 1 {
-                        return olr_err!(030001, "Field 'read-buffer-max-mb' ({}) expected: at least {}", read_buffer_max, 2 * constants::MEMORY_CHUNK_SIZE_MB).into();
+                        return olr_err!(NotValidField, "Field 'read-buffer-max-mb' ({}) expected: at least {}", read_buffer_max, 2 * constants::MEMORY_CHUNK_SIZE_MB).into();
                     }
                 }
             }
@@ -216,21 +217,21 @@ impl OracleLogicalReplicator {
             if source_json.get("flags").is_some() {
                 flags = self.get_json_field_u64(source_json, "flags")?;
                 if flags > 0x7FFFF {
-                    return olr_err!(030001, "Field 'flags' ({}) expected: one of {{0 .. 524287}}", flags).into();
+                    return olr_err!(NotValidField, "Field 'flags' ({}) expected: one of {{0 .. 524287}}", flags).into();
                 }
             }
 
             if source_json.get("skip-rollback").is_some() {
                 skip_rollback = self.get_json_field_u64(source_json, "skip-rollback")?;
                 if skip_rollback > 1 {
-                    return olr_err!(030001, "Field 'skip-rollback' ({}) expected: one of {{0, 1}}", flags).into();
+                    return olr_err!(NotValidField, "Field 'skip-rollback' ({}) expected: one of {{0, 1}}", flags).into();
                 }
             }
 
             if reader_json.get("disable-checks").is_some() {
                 disable_checks = self.get_json_field_u64(reader_json, "disable-checks")?;
                 if disable_checks > 15 {
-                    return olr_err!(030001, "Field 'disable-checks' ({}) expected: one of {{0 .. 15}}", flags).into();
+                    return olr_err!(NotValidField, "Field 'disable-checks' ({}) expected: one of {{0 .. 15}}", flags).into();
                 }
             }
 
@@ -248,7 +249,7 @@ impl OracleLogicalReplicator {
 
             let start_time_rel = if reader_json.get("start-time-rel").is_some() {
                 if start_scn != types::TypeScn::default() {
-                    return olr_err!(030001, "Field 'start-time-rel' expected: unset when 'start-scn' is set {}", start_scn).into();
+                    return olr_err!(NotValidField, "Field 'start-time-rel' expected: unset when 'start-scn' is set {}", start_scn).into();
                 }
                 self.get_json_field_u64(&reader_json, "start-time-rel")?
             } else {
@@ -257,11 +258,11 @@ impl OracleLogicalReplicator {
 
             let start_time = if reader_json.get("start-time").is_some() {
                 if start_scn != types::TypeScn::default() {
-                    return olr_err!(030001, "Field 'start-time' expected: unset when 'start-scn' is set {}", start_scn).into();
+                    return olr_err!(NotValidField, "Field 'start-time' expected: unset when 'start-scn' is set {}", start_scn).into();
                 }
 
                 if start_time_rel > 0 {
-                    return olr_err!(030001, "Field 'start-time' expected: unset when 'start_time_rel' is set {}", start_time_rel).into();
+                    return olr_err!(NotValidField, "Field 'start-time' expected: unset when 'start_time_rel' is set {}", start_time_rel).into();
                 }
                 
                 self.get_json_field_s(&reader_json, "start-time")?
@@ -334,7 +335,7 @@ impl OracleLogicalReplicator {
             if format_json.get("db").is_some() {
                 db_format = self.get_json_field_u64(&format_json, "db")? as u8;
                 if db_format > 3 {
-                    return olr_err!(030001, "Field 'db' ({}) expected: one of {{0 .. 3}}", db_format).into();
+                    return olr_err!(NotValidField, "Field 'db' ({}) expected: one of {{0 .. 3}}", db_format).into();
                 }
             }
 
@@ -342,7 +343,7 @@ impl OracleLogicalReplicator {
             if format_json.get("attributes").is_some() {
                 attributes_format = self.get_json_field_u64(&format_json, "attributes")? as u8;
                 if attributes_format > 7 {
-                    return olr_err!(030001, "Field 'attributes' ({}) expected: one of {{0 .. 7}}", attributes_format).into()
+                    return olr_err!(NotValidField, "Field 'attributes' ({}) expected: one of {{0 .. 7}}", attributes_format).into()
                 }
             }
 
@@ -350,7 +351,7 @@ impl OracleLogicalReplicator {
             if format_json.get("interval-dts").is_some() {
                 interval_dts_format = self.get_json_field_u64(&format_json, "interval-dts")? as u8;
                 if interval_dts_format > 10 {
-                    return olr_err!(030001, "Field 'interval-dts' ({}) expected: one of {{0 .. 10}}", interval_dts_format).into()
+                    return olr_err!(NotValidField, "Field 'interval-dts' ({}) expected: one of {{0 .. 10}}", interval_dts_format).into()
                 }
             }
 
@@ -358,7 +359,7 @@ impl OracleLogicalReplicator {
             if format_json.get("interval-ytm").is_some() {
                 interval_ytm_format = self.get_json_field_u64(&format_json, "interval-ytm")? as u8;
                 if interval_ytm_format > 4 {
-                    return olr_err!(030001, "Field 'interval-ytm' ({}) expected: one of {{0 .. 4}}", interval_ytm_format).into()
+                    return olr_err!(NotValidField, "Field 'interval-ytm' ({}) expected: one of {{0 .. 4}}", interval_ytm_format).into()
                 }
             }
 
@@ -366,11 +367,11 @@ impl OracleLogicalReplicator {
             if format_json.get("message").is_some() {
                 message_format = self.get_json_field_u64(&format_json, "message")? as u8;
                 if message_format > 31 {
-                    return olr_err!(030001, "Field 'message' ({}) expected: one of {{0 .. 31}}", message_format).into()
+                    return olr_err!(NotValidField, "Field 'message' ({}) expected: one of {{0 .. 31}}", message_format).into()
                 }
                 if (message_format & builder::formats::MESSAGE_FORMAT_FULL) != 0 && 
                     (message_format & (builder::formats::MESSAGE_FORMAT_SKIP_BEGIN | builder::formats::MESSAGE_FORMAT_SKIP_COMMIT)) != 0 {
-                    return olr_err!(030001, "Field 'message' ({}) expected: BEGIN/COMMIT flag is unset ({}/{}) together with FULL mode ({})", message_format,
+                    return olr_err!(NotValidField, "Field 'message' ({}) expected: BEGIN/COMMIT flag is unset ({}/{}) together with FULL mode ({})", message_format,
                                     builder::formats::MESSAGE_FORMAT_SKIP_BEGIN, builder::formats::MESSAGE_FORMAT_SKIP_COMMIT, builder::formats::MESSAGE_FORMAT_FULL).into()
                 }
             }
@@ -379,7 +380,7 @@ impl OracleLogicalReplicator {
             if format_json.get("rid").is_some() {
                 rid_format = self.get_json_field_u64(&format_json, "rid")? as u8;
                 if rid_format > 1 {
-                    return olr_err!(030001, "Field 'rid' ({}) expected: one of {{0, 1}}", rid_format).into()
+                    return olr_err!(NotValidField, "Field 'rid' ({}) expected: one of {{0, 1}}", rid_format).into()
                 }
             }
 
@@ -387,7 +388,7 @@ impl OracleLogicalReplicator {
             if format_json.get("xid").is_some() {
                 xid_format = self.get_json_field_u64(&format_json, "xid")? as u8;
                 if xid_format > 2 {
-                    return olr_err!(030001, "Field 'xid' ({}) expected: one of {{0 .. 2}}", xid_format).into()
+                    return olr_err!(NotValidField, "Field 'xid' ({}) expected: one of {{0 .. 2}}", xid_format).into()
                 }
             }
 
@@ -395,7 +396,7 @@ impl OracleLogicalReplicator {
             if format_json.get("timestamp").is_some() {
                 timestamp_format = self.get_json_field_u64(&format_json, "timestamp")? as u8;
                 if timestamp_format > 15 {
-                    return olr_err!(030001, "Field 'timestamp' ({}) expected: one of {{0 .. 15}}", timestamp_format).into()
+                    return olr_err!(NotValidField, "Field 'timestamp' ({}) expected: one of {{0 .. 15}}", timestamp_format).into()
                 }
             }
 
@@ -403,7 +404,7 @@ impl OracleLogicalReplicator {
             if format_json.get("timestamp-tz").is_some() {
                 timestamp_tz_format = self.get_json_field_u64(&format_json, "timestamp-tz")? as u8;
                 if timestamp_tz_format > 11 {
-                    return olr_err!(030001, "Field 'timestamp-tz' ({}) expected: one of {{0 .. 11}}", timestamp_tz_format).into()
+                    return olr_err!(NotValidField, "Field 'timestamp-tz' ({}) expected: one of {{0 .. 11}}", timestamp_tz_format).into()
                 }
             }
 
@@ -411,7 +412,7 @@ impl OracleLogicalReplicator {
             if format_json.get("timestamp-all").is_some() {
                 timestamp_all = self.get_json_field_u64(&format_json, "timestamp-all")? as u8;
                 if timestamp_all > 1 {
-                    return olr_err!(030001, "Field 'timestamp-all' ({}) expected: one of {{0, 1}}", timestamp_all).into()
+                    return olr_err!(NotValidField, "Field 'timestamp-all' ({}) expected: one of {{0, 1}}", timestamp_all).into()
                 }
             }
 
@@ -419,7 +420,7 @@ impl OracleLogicalReplicator {
             if format_json.get("char").is_some() {
                 char_format = self.get_json_field_u64(&format_json, "char")? as u8;
                 if char_format > 3 {
-                    return olr_err!(030001, "Field 'char' ({}) expected: one of {{0 .. 3}}", char_format).into()
+                    return olr_err!(NotValidField, "Field 'char' ({}) expected: one of {{0 .. 3}}", char_format).into()
                 }
             }
 
@@ -427,7 +428,7 @@ impl OracleLogicalReplicator {
             if format_json.get("scn").is_some() {
                 scn_format = self.get_json_field_u64(&format_json, "scn")? as u8;
                 if scn_format > 3 {
-                    return olr_err!(030001, "Field 'scn' ({}) expected: one of {{0 .. 3}}", scn_format).into()
+                    return olr_err!(NotValidField, "Field 'scn' ({}) expected: one of {{0 .. 3}}", scn_format).into()
                 }
             }
 
@@ -435,7 +436,7 @@ impl OracleLogicalReplicator {
             if format_json.get("scn-all").is_some() {
                 scn_all = self.get_json_field_u64(&format_json, "scn-all")? as u8;
                 if scn_all > 1 {
-                    return olr_err!(030001, "Field 'scn-all' ({}) expected: one of {{0, 1}}", scn_all).into()
+                    return olr_err!(NotValidField, "Field 'scn-all' ({}) expected: one of {{0, 1}}", scn_all).into()
                 }
             }
 
@@ -443,7 +444,7 @@ impl OracleLogicalReplicator {
             if format_json.get("unknown").is_some() {
                 unknown_format = self.get_json_field_u64(&format_json, "unknown")? as u8;
                 if unknown_format > 1 {
-                    return olr_err!(030001, "Field 'unknown' ({}) expected: one of {{0, 1}}", unknown_format).into()
+                    return olr_err!(NotValidField, "Field 'unknown' ({}) expected: one of {{0, 1}}", unknown_format).into()
                 }
             }
 
@@ -451,7 +452,7 @@ impl OracleLogicalReplicator {
             if format_json.get("schema").is_some() {
                 schema_format = self.get_json_field_u64(&format_json, "schema")? as u8;
                 if schema_format > 7 {
-                    return olr_err!(030001, "Field 'schema' ({}) expected: one of {{0 .. 7}}", schema_format).into()
+                    return olr_err!(NotValidField, "Field 'schema' ({}) expected: one of {{0 .. 7}}", schema_format).into()
                 }
             }
 
@@ -459,7 +460,7 @@ impl OracleLogicalReplicator {
             if format_json.get("column").is_some() {
                 column_format = self.get_json_field_u64(&format_json, "column")? as u8;
                 if column_format > 2 {
-                    return olr_err!(030001, "Field 'column' ({}) expected: one of {{0 .. 2}}", column_format).into()
+                    return olr_err!(NotValidField, "Field 'column' ({}) expected: one of {{0 .. 2}}", column_format).into()
                 }
             }
 
@@ -467,7 +468,7 @@ impl OracleLogicalReplicator {
             if format_json.get("unknown-type").is_some() {
                 unknown_type = self.get_json_field_u64(&format_json, "unknown-type")? as u8;
                 if unknown_type > 1 {
-                    return olr_err!(030001, "Field 'unknown-type' ({}) expected: one of {{0, 1}}", unknown_type).into()
+                    return olr_err!(NotValidField, "Field 'unknown-type' ({}) expected: one of {{0, 1}}", unknown_type).into()
                 }
             }
 
@@ -517,8 +518,8 @@ impl OracleLogicalReplicator {
         
         let res : Result<(), OLRError> = match res {
             Ok(Ok(())) => Ok(()),
-            Ok(Err(thread_err)) => olr_err!(040001, "Thread error: {}", thread_err.to_string()).into(),
-            Err(channel_err) => {error!("Recieve error: {}", channel_err); Ok(())}
+            Ok(Err(thread_err)) => olr_err!(ThreadSpawn, "Thread error: {}", thread_err.to_string()).into(),
+            Err(channel_err) => {warn!("Recieve error: {}", channel_err); Ok(())}
         };
 
         for i in handle_vector {

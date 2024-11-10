@@ -1,7 +1,8 @@
 use std::{sync::{mpsc::Sender, Arc, RwLock}, thread::sleep, time};
 use log::info;
 
-use crate::{builder::JsonBuilder, common::{errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err};
+use crate::{builder::JsonBuilder, common::{self, errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err};
+use common::OLRErrorCode::*;
 
 pub struct OnlineReplicator {
     context_ptr     : Arc<RwLock<Ctx>>, 
@@ -41,7 +42,7 @@ impl Thread for OnlineReplicator {
         self.main_channel
             .send(Ok(()))
             .or_else(|err| 
-                olr_err!(040001, "Send error while stopping thread {}: {}", self.alias, err.to_string()).into()
+                olr_err!(ChannelSend, "Send error while stopping thread {}: {}", self.alias, err.to_string()).into()
             )?;
 
         Ok(())

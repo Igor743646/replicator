@@ -1,6 +1,6 @@
 use std::{alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
 use log::{trace, warn};
-
+use crate::common::OLRErrorCode::*;
 use crate::olr_err;
 use super::{constants, errors::OLRError};
 
@@ -28,7 +28,7 @@ impl MemoryChunk {
             let memory: *mut u8 = alloc_zeroed(Self::MEMORY_LAYOUT);
 
             if memory.is_null() {
-                return olr_err!(040001, "Memory chunk allocation failed").into();
+                return olr_err!(MemoryAllocation, "Memory chunk allocation failed").into();
             }
 
             data_ptr = NonNull::new_unchecked(std::ptr::slice_from_raw_parts_mut(memory, Self::MEMORY_LAYOUT.size()));
@@ -138,7 +138,7 @@ impl MemoryPool {
             self.memory_chunks_free as usize
         };
 
-        let result = self.memory_chunks.pop_front().unwrap();
+        let result = self.memory_chunks.pop_front().expect("queue is not empty");
         trace!("Borrow a chunk. Address: {:?}. Free/Allocated/Max: {}/{}/{}", 
             result.as_ptr(), self.memory_chunks_free, self.memory_chunks_allocated, self.memory_chunks_max );
         

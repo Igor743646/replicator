@@ -1,8 +1,29 @@
 use std::backtrace::Backtrace;
 
+#[derive(Debug, Copy, Clone)]
+pub enum OLRErrorCode {
+    Internal = 1,
+    WrongFileName = 100000,
+    GetFileMetadata,
+    FileReading,
+    FileWriting,
+    FileDeserialization,
+    FileSerialization,
+    UnknownConfigField,
+    MissingConfigField,
+    WrongConfigFieldType,
+    NotValidField,
+    ChannelSend = 200000,
+    ChannelRecv,
+    UnknownCharset,
+    TakeLock,
+    MemoryAllocation,
+    ThreadSpawn,
+}
+
 #[derive(Debug)]
 pub struct OracleLogicalReplicatorError {
-    code : i32,
+    code : OLRErrorCode,
     message : String,
     backtrace : String,
 }
@@ -10,9 +31,9 @@ pub struct OracleLogicalReplicatorError {
 pub type OLRError = OracleLogicalReplicatorError;
 
 impl OLRError {
-    pub fn new(code : i32, message : String) -> Self {
-        let backtrace = Backtrace::force_capture().to_string();
-        Self { code, message, backtrace }
+    pub fn new(code : OLRErrorCode, message : String) -> Self {
+        let backtrace: Backtrace = Backtrace::force_capture();
+        Self { code, message, backtrace : backtrace.to_string() }
     }
 }
 
@@ -24,7 +45,7 @@ impl<T> Into<Result<T, OLRError>> for OLRError {
 
 impl std::fmt::Display for OLRError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Code: {:06} Description: {} Backtrace:\n{}", self.code, self.message, self.backtrace)
+        write!(f, "Code: {:06} Description: {} Backtrace:\n{}", self.code as i32, self.message, self.backtrace)
     }
 }
 

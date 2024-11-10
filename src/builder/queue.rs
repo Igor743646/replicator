@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, fmt::Display, sync::{Arc, RwLock}};
 use crate::{common::{errors::OLRError, memory_pool::MemoryChunk}, ctx::Ctx, olr_err};
-
+use crate::common::OLRErrorCode::*;
 use log::info;
 
 pub struct BuilderChunk {
@@ -45,7 +45,7 @@ impl BuilderQueue {
         
         let chunk: MemoryChunk = {
             let mut context  = context_ptr.write()
-                                                                     .or(olr_err!(040001, "Error with other thread").into())?;
+                                                                     .or(olr_err!(TakeLock, "Error with other thread").into())?;
             context.get_chunk()?
         };
 
