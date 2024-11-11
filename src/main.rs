@@ -43,6 +43,7 @@ fn start(args : ReplicatorArgs) -> Result<(), OLRError> {
     replicator.run()
 }
 
+#[cfg(debug_assertions)]
 fn init_logger() {
     env_logger::Builder::new()
         .format(|buf, record| {
@@ -62,6 +63,27 @@ fn init_logger() {
             )
         })
         .filter(None, log::LevelFilter::Trace)
+        .init();
+}
+
+#[cfg(not(debug_assertions))]
+fn init_logger() {
+    env_logger::Builder::new()
+        .format(|buf, record| {
+            writeln!(buf,
+                "{} [{}\x1b[0;37;40m] {}",
+                chrono::Local::now().format("\x1b[0;32;40m%Y-%m-%d \x1b[0;33;40m%H:%M:%S \x1b[0;37;40m"),
+                match record.level() {
+                    log::Level::Error => "\x1b[38;5;124mERROR",
+                    log::Level::Warn => "\x1b[38;5;196m WARN",
+                    log::Level::Info => "\x1b[38;5;226m INFO",
+                    log::Level::Debug => "\x1b[38;5;020mDEBUG",
+                    log::Level::Trace => "\x1b[38;5;15mTRACE",
+                },
+                record.args(),
+            )
+        })
+        .filter(None, log::LevelFilter::Info)
         .init();
 }
 

@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, fmt::Display, sync::{Arc, RwLock}};
 use crate::{common::{errors::OLRError, memory_pool::MemoryChunk}, ctx::Ctx, olr_err};
 use crate::common::OLRErrorCode::*;
-use log::info;
+use log::{debug, info};
 
 #[derive(Debug)]
 pub struct BuilderChunk {
@@ -43,7 +43,7 @@ pub struct BuilderQueue {
 
 impl BuilderQueue {
     pub fn new(context_ptr : Arc<RwLock<Ctx>>) -> Result<Self, OLRError> {
-        info!("Initialize BuilderQueue");
+        debug!("Initialize BuilderQueue");
         
         let chunk: MemoryChunk = {
             let mut context  = context_ptr.write()

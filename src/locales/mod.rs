@@ -3,6 +3,7 @@ pub mod charset_7bit;
 
 use charset::CharacterMapper;
 use charset_7bit::CharSet7Bit;
+use log::debug;
 
 use crate::{common::errors::OLRError, olr_err};
 use crate::common::OLRErrorCode::*;
@@ -21,6 +22,7 @@ impl std::fmt::Debug for Locales {
 
 impl Locales {
     pub fn new() -> Self {
+        debug!("Initialize Locales");
         Self::default()
     }
 

@@ -1,5 +1,5 @@
 use std::{alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
-use log::{trace, warn};
+use log::{debug, trace, warn};
 use crate::common::OLRErrorCode::*;
 use crate::olr_err;
 use super::{constants, errors::OLRError};
@@ -99,6 +99,7 @@ pub struct MemoryPool {
 
 impl MemoryPool {
     pub fn new(memory_min_mb : u64, memory_max_mb : u64, read_buffer_max : u64) -> Result<Self, OLRError> {
+        debug!("Initialize MemoryPool");
         let mut result = Self {
             memory_min_mb,
             memory_max_mb,

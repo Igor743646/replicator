@@ -1,5 +1,7 @@
 use std::sync::{Arc, RwLock};
 
+use log::debug;
+
 use crate::{common::{constants, types::{TypeConId, TypeScn, TypeSeq}}, ctx::Ctx, locales::Locales, oradefs::db_object::DataBaseObject};
 
 #[derive(Debug)]
@@ -24,6 +26,7 @@ impl Metadata {
         start_sequence  : TypeSeq,
         start_time      : String,
         start_time_rel  : u64) -> Self {
+        debug!("Initialize Metadata");
         let mut result = Self {context_ptr, locales_ptr, source_name, container_id, start_scn, start_sequence, start_time, start_time_rel, schema_objects : Vec::new()};
         result.reset_objects();
         result

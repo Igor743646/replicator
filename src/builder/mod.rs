@@ -1,5 +1,5 @@
 use std::sync::{Arc, RwLock};
-use log::info;
+use log::{debug, info};
 
 use formats::BuilderFormats;
 use queue::BuilderQueue;
@@ -23,7 +23,7 @@ impl JsonBuilder {
                 db_format : u8, attributes_format : u8, interval_dts_format : u8, interval_ytm_format : u8, message_format : u8, 
                 rid_format : u8, xid_format : u8, timestamp_format : u8, timestamp_tz_format : u8, timestamp_all : u8, char_format : u8,
                 scn_format : u8, scn_all : u8, unknown_format : u8, schema_format : u8, column_format : u8, unknown_type : u8) -> Result<Self, OLRError> {
-        info!("Initialize JsonBuilder");
+        debug!("Initialize JsonBuilder");
         Ok(Self {
             context_ptr : context_ptr.clone(), locales_ptr, metadata_ptr, 
             formats : BuilderFormats {
