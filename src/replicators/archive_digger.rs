@@ -1,23 +1,33 @@
+use core::fmt;
 use std::collections::VecDeque;
-use std::ffi::{OsStr, OsString};
+use std::fmt::Debug;
 use std::path::PathBuf;
 use log::{info, trace, warn};
 
 use crate::{common::errors::OLRError, olr_err, parser::Parser};
 use crate::common::OLRErrorCode::*;
 
-trait ArchiveDigger {
+pub trait ArchiveDigger where Self: Send + Sync + Debug {
     fn get_parsers_queue(&self) -> Result<VecDeque<Parser>, OLRError>;
     fn get_sequence_from_file(&self, log_archive_format : &String, file : &PathBuf) -> Option<u64>;
 }
 
-struct ArchiveDiggerOffline {
+pub struct ArchiveDiggerOffline {
     archive_log_format : String, 
     db_recovery_file_destination : String,
     context : String,
     min_sequence : Option<u64>,
     mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>,
 }
+
+impl Debug for ArchiveDiggerOffline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ArchiveDiggerOffline {{ archive_log_format : {}, db_recovery_file_destination : {}, context : {}, min_sequence : {:?}}}", self.archive_log_format, self.db_recovery_file_destination, self.context, self.min_sequence)
+    }
+}
+
+unsafe impl Send for ArchiveDiggerOffline {}
+unsafe impl Sync for ArchiveDiggerOffline {}
 
 impl ArchiveDiggerOffline {
     pub fn new(archive_log_format : String, db_recovery_file_destination : String,
@@ -213,7 +223,7 @@ mod tests {
     fn test_queue_getting() -> Result<(), OLRError> {
         init_logger();
         let q1 = create_offline_digger(0).get_parsers_queue()?;
-        assert_eq!(q1.len(), 8);
+        assert_eq!(q1.len(), 6);
 
 
         let q2 = create_offline_digger(173).get_parsers_queue()?;

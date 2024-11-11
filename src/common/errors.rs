@@ -26,17 +26,25 @@ pub enum OLRErrorCode {
 
 #[derive(Debug)]
 pub struct OracleLogicalReplicatorError {
-    code : OLRErrorCode,
-    message : String,
-    backtrace : String,
+    source      : &'static str,
+    line        : u32,
+    code        : OLRErrorCode,
+    message     : String,
+    backtrace   : String,
 }
 
 pub type OLRError = OracleLogicalReplicatorError;
 
 impl OLRError {
-    pub fn new(code : OLRErrorCode, message : String) -> Self {
-        let backtrace: Backtrace = Backtrace::force_capture();
-        Self { code, message, backtrace : backtrace.to_string() }
+    pub fn new(source : &'static str, line : u32, code : OLRErrorCode, message : String) -> Self {
+        let backtrace: Backtrace = Backtrace::capture();
+        let backtrace = match backtrace.status() {
+            std::backtrace::BacktraceStatus::Unsupported => "No backtrace".to_string(),
+            std::backtrace::BacktraceStatus::Disabled => "No backtrace".to_string(),
+            std::backtrace::BacktraceStatus::Captured => "\n".to_string() + backtrace.to_string().as_str(),
+            _ => std::unreachable!(),
+        };
+        Self { source, line, code, message, backtrace }
     }
 }
 
@@ -48,17 +56,17 @@ impl<T> Into<Result<T, OLRError>> for OLRError {
 
 impl std::fmt::Display for OLRError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Code: {:06} Description: {} Backtrace:\n{}", self.code as i32, self.message, self.backtrace)
+        write!(f, "[Src: {} Line: {}] Code: {:06} Description: {} Backtrace: {}", self.source, self.line, self.code as i32, self.message, self.backtrace)
     }
 }
 
 #[macro_export]
 macro_rules! olr_err {
     ($code:tt, $message:expr, $($args:tt)*) => {
-        $crate::common::errors::OLRError::new($code, format!($message, $($args)*))
+        $crate::common::errors::OLRError::new(file!(), line!(), $code, format!($message, $($args)*))
     };
 
     ($code:tt, $message:expr) => {
-        $crate::common::errors::OLRError::new($code, format!($message))
+        $crate::common::errors::OLRError::new(file!(), line!(), $code, format!($message))
     };
 }

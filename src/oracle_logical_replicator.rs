@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -18,6 +20,8 @@ use crate::ctx::Dump;
 use crate::locales::Locales;
 use crate::metadata;
 use crate::olr_err;
+use crate::replicators::archive_digger::ArchiveDigger;
+use crate::replicators::archive_digger::ArchiveDiggerOffline;
 use crate::replicators::online_replicator::OnlineReplicator;
 
 pub struct OracleLogicalReplicator {
@@ -48,39 +52,39 @@ impl OracleLogicalReplicator {
 
     fn get_json_field_a<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<&'a Vec<serde_json::Value>, OLRError> {
         value.get(name)
-            .ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?
+            .ok_or(olr_err!(MissingConfigField, "Not field '{}' in config, but expected", name))?
             .as_array()
-            .ok_or(olr_err!(WrongConfigFieldType, "Field {} not an array", name))
+            .ok_or(olr_err!(WrongConfigFieldType, "Field '{}' not an array", name))
     }
 
     fn get_json_field_o<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<&'a serde_json::Value, OLRError> {
-        let res = value.get(name).ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?;
+        let res = value.get(name).ok_or(olr_err!(MissingConfigField, "Not field '{}' in config, but expected", name))?;
         if res.is_object() {
             return Ok(res);
         } else {
-            return olr_err!(WrongConfigFieldType, "Field {} not an object", name).into();
+            return olr_err!(WrongConfigFieldType, "Field '{}' not an object", name).into();
         }
     }
 
     fn get_json_field_s<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<String, OLRError> {
         Ok(value.get(name)
-                    .ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?
+                    .ok_or(olr_err!(MissingConfigField, "Not field '{}' in config, but expected", name))?
                     .as_str()
-                    .ok_or(olr_err!(WrongConfigFieldType, "Field {} not a string", name))?.to_string())
+                    .ok_or(olr_err!(WrongConfigFieldType, "Field '{}' not a string", name))?.to_string())
     }
 
     fn get_json_field_i64(&self, value : &serde_json::Value, name : &str) -> Result<i64, OLRError> {
         value.get(name)
-            .ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?
+            .ok_or(olr_err!(MissingConfigField, "Not field '{}' in config, but expected", name))?
             .as_i64()
-            .ok_or(olr_err!(WrongConfigFieldType, "Field {} not a i64", name))
+            .ok_or(olr_err!(WrongConfigFieldType, "Field '{}' not a i64", name))
     }
 
     fn get_json_field_u64(&self, value : &serde_json::Value, name : &str) -> Result<u64, OLRError> {
         value.get(name)
-            .ok_or(olr_err!(MissingConfigField, "Not field {} in config, but expected", name))?
+            .ok_or(olr_err!(MissingConfigField, "Not field '{}' in config, but expected", name))?
             .as_u64()
-            .ok_or(olr_err!(WrongConfigFieldType, "Field {} not a u64", name))
+            .ok_or(olr_err!(WrongConfigFieldType, "Field '{}' not a u64", name))
     }
 
     pub fn run(&self) -> Result<(), OLRError> {
@@ -387,8 +391,8 @@ impl OracleLogicalReplicator {
             let mut xid_format = builder::formats::XID_FORMAT_TEXT_HEX;
             if format_json.get("xid").is_some() {
                 xid_format = self.get_json_field_u64(&format_json, "xid")? as u8;
-                if xid_format > 2 {
-                    return olr_err!(NotValidField, "Field 'xid' ({}) expected: one of {{0 .. 2}}", xid_format).into()
+                if xid_format > 3 {
+                    return olr_err!(NotValidField, "Field 'xid' ({}) expected: one of {{0 .. 3}}", xid_format).into()
                 }
             }
 
@@ -478,38 +482,44 @@ impl OracleLogicalReplicator {
 
             let reader_type = self.get_json_field_s(&reader_json, "type")?;
 
+            let log_archive_format = if reader_json.get("log-archive-format").is_some() {
+                self.get_json_field_s(reader_json, "log-archive-format")?
+            } else {
+                "o1_mf_%t_%s_%h_.arc".to_string()
+            };
+
             let replicator = match reader_type.as_str() {
                 "online" => {
                     let user = self.get_json_field_s(&reader_json, "user")?;
                     let password = self.get_json_field_s(&reader_json, "password")?;
                     let server = self.get_json_field_s(&reader_json, "server")?;
-                    // std::unimplemented!();
-                    // if source_json.get("arch").is_some() {
-                    //     let arch = self.get_json_field_s(&source_json, "arch")?;
 
-                    //     let arch_get_log = match arch {
-                    //         "path" => std::unimplemented!(),
-                    //         "online" => std::unimplemented!(),
-                    //         _ => return olr_err!(30001, "Field 'arch' ({}) expected: one of {{path, online}}", arch).into()
-                    //     };
+                    let archive_digger: Box<dyn ArchiveDigger> = if source_json.get("arch").is_some() {
+                        let arch = self.get_json_field_s(&source_json, "arch")?;
 
-                    //     arch_get_log
-                    // } else {
-                    //     arch_get_log = ReplicatorOnline::arch_get_logOnline;
-                    // }
+                        let arch_get_log = match arch.as_str() {
+                            "path" => {
+                                let mapping_fn = self.mapping_configuration(reader_json)?;
+                                Box::new(ArchiveDiggerOffline::new(log_archive_format, "".into(), "".into(), None, mapping_fn))
+                            },
+                            "online" => std::unimplemented!(),
+                            _ => return olr_err!(NotValidField, "Field 'arch' ({}) expected: one of {{path, online}}", arch).into()
+                        };
+
+                        arch_get_log
+                    } else {
+                        let mapping_fn = self.mapping_configuration(reader_json)?;
+                        Box::new(ArchiveDiggerOffline::new(log_archive_format, "".into(), "".into(), None, mapping_fn))
+                    };
                     
-                    let replicator = OnlineReplicator::new(context_ptr.clone(), /*archGetLog,*/ builder_ptr.clone(), metadata_ptr.clone(),
+                    let replicator = OnlineReplicator::new(context_ptr.clone(), builder_ptr.clone(), metadata_ptr.clone(), archive_digger,
                                                         alias, source_name, user, password, server, main_sender);
-                    // replicator->initialize();
-                    // mainProcessMapping(readerJson);
                     replicator
                 },
                 _ => std::unimplemented!()
             };
 
-            let replicator_handle = spawn(Box::new(replicator))?;
-            handle_vector.push(replicator_handle);
-
+            handle_vector.push(spawn(Box::new(replicator))?);
         }
 
         info!("Start Replication!");
@@ -536,6 +546,31 @@ impl OracleLogicalReplicator {
         }
 
         Ok(())
+    }
+
+    fn mapping_configuration(&self, reader_json : &serde_json::Value) -> Result<Box<dyn Fn(PathBuf) -> PathBuf>, OLRError> {
+        let mut hash_map = HashMap::<PathBuf, PathBuf>::new();
+        if reader_json.get("path-mapping").is_some() {
+            let mapping_array = self.get_json_field_a(&reader_json, "path-mapping")?;
+
+            if (mapping_array.len() % 2) != 0 {
+                return olr_err!(NotValidField, "Field 'path-mapping' (len: {}) expected: 2*N", mapping_array.len()).into();
+            }
+
+            for kv in mapping_array.chunks(2) {
+                let source = kv[0].as_str().ok_or(olr_err!(WrongConfigFieldType, "Source path is not string"))?.to_string();
+                let target = kv[1].as_str().ok_or(olr_err!(WrongConfigFieldType, "Target path is not string"))?.to_string();
+                
+                hash_map.insert(source.into(), target.into());
+            }
+        }
+
+        Ok(Box::new(move |path : PathBuf| -> PathBuf {
+            hash_map
+                .get(&path)
+                .unwrap_or(&path)
+                .to_path_buf()
+        }))
     }
 }
 

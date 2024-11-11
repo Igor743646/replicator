@@ -109,6 +109,7 @@ pub const XID_FORMAT_TEXT_HEX : u8 = 0;
 pub const XID_FORMAT_TEXT_DEC : u8 = 1;
 pub const XID_FORMAT_NUMERIC : u8 = 2;
 
+#[derive(Debug)]
 pub struct BuilderFormats {
     pub db_format : u8, 
     pub attributes_format : u8, 

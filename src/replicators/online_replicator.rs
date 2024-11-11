@@ -4,10 +4,14 @@ use log::info;
 use crate::{builder::JsonBuilder, common::{self, errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err};
 use common::OLRErrorCode::*;
 
+use super::archive_digger::ArchiveDigger;
+
+#[derive(Debug)]
 pub struct OnlineReplicator {
     context_ptr     : Arc<RwLock<Ctx>>, 
     builder_ptr     : Arc<RwLock<JsonBuilder>>, 
     metadata_ptr    : Arc<RwLock<Metadata>>,
+    archive_digger  : Box<dyn ArchiveDigger>,
     alias           : String, 
     name            : String, 
     user            : String, 
@@ -18,10 +22,10 @@ pub struct OnlineReplicator {
 } 
 
 impl OnlineReplicator {
-    pub fn new(context_ptr : Arc<RwLock<Ctx>>, builder_ptr : Arc<RwLock<JsonBuilder>>, metadata_ptr : Arc<RwLock<Metadata>>,
-        alias : String, name : String, user : String, password : String, server : String, main_channel : Sender<Result<(), OLRError>>) -> Self {
+    pub fn new(context_ptr : Arc<RwLock<Ctx>>, builder_ptr : Arc<RwLock<JsonBuilder>>, metadata_ptr : Arc<RwLock<Metadata>>, archive_digger  : Box<dyn ArchiveDigger>,
+         alias : String, name : String, user : String, password : String, server : String, main_channel : Sender<Result<(), OLRError>>) -> Self {
         Self {
-            context_ptr, builder_ptr, metadata_ptr,
+            context_ptr, builder_ptr, metadata_ptr, archive_digger,
             alias, name, user, password, server, main_channel
         }
     }

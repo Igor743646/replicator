@@ -9,6 +9,7 @@ use crate::{common::errors::OLRError, ctx::Ctx, locales::Locales, metadata::Meta
 pub mod formats;
 pub mod queue;
 
+#[derive(Debug)]
 pub struct JsonBuilder {
     context_ptr : Arc<RwLock<Ctx>>, 
     locales_ptr : Arc<RwLock<Locales>>, 

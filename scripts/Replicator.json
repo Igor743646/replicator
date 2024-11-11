@@ -1,42 +1,65 @@
 {
-    "version": "0.1.0",
-    "source": [
+  "version": "0.1.0",
+  "log-level": 4,
+  "dump-redo-log": 2,
+  "dump-path": "output/",
+  "source": [
       {
-        "alias": "S1",
-        "name": "O112A",
-        "reader": {
-          "type": "online",
-          "user": "IGOR",
-          "password": "nhbgrbkk2001",
-          "server": "",
-          "redo-log": ["/oracle/arch/o1_mf_1_1991_hkb9y64l_.arc", "/oracle/arch/o1_mf_1_1992_hkb9y93r_.arc", "/oracle/otherDir"],
-          "log-archive-format": ""
-        },
-        "format": {
-          "type": "json"
-        },
-        "memory": {
-          "min-mb": 16,
-          "max-mb": 17
-        },
-        "filter": {
-          "table": [
-            {"owner": "OWNER1", "table": "TABLENAME1", "key": "col1, col2, col3"},
-            {"owner": "OWNER1", "table": "TABLENAME2"},
-            {"owner": "OWNER2", "table": "TAB.*"}
-          ]
-        }
+          "alias": "S1",
+          "name": "FST",
+          "flags": 1424,
+          "reader": {
+              "type": "online",
+              "user": "IGOR",
+              "password": "nhbgrbkk2001",
+              "server": "unknown",
+              "start-seq": 238,
+              "start-scn": 19632726,
+              "redo-log": [
+                  "/mnt/fors_oracle/data/d3/oracle/fra/FST/archivelog/2024_10_28/o1_mf_1_238_mkyvzcmq_.arc"
+              ]
+          },
+          "skip-rollback": 0,
+          "format": {
+              "type": "json",
+              "attributes": 7,
+              "message": 0,
+              "schema": 7,
+              "timestamp": 12,
+              "timestamp-tz": 8,
+              "interval-dts": 10,
+              "interval-ytm": 4,
+              "xid": 3,
+              "char": 0,
+              "rid": 0,
+              "scn-all": 1,
+              "column": 2
+          },
+          "memory": {
+              "min-mb": 64,
+              "max-mb": 1024
+          },
+          "filter": {
+              "table": [
+                  {
+                      "owner": "IGOR",
+                      "table": "TEST.*"
+                  }
+              ]
+          }
       }
-    ],
-    "target": [
+  ],
+  "target": [
       {
-        "alias": "K1",
-        "source": "S1",
-        "writer": {
-          "type": "kafka",
-          "topic": "O112A",
-          "brokers": "localhost:9092"
-        }
+          "alias": "K1",
+          "source": "S1",
+          "writer": {
+              "type": "file",
+              "output": "output/output-%t.json",
+              "new-line": 1,
+              "max-file-size": 1073741824,
+              "append": 0
+          }
       }
-    ]
-  }
+  ]
+}

@@ -3,6 +3,7 @@ use crate::{common::{errors::OLRError, memory_pool::MemoryChunk}, ctx::Ctx, olr_
 use crate::common::OLRErrorCode::*;
 use log::info;
 
+#[derive(Debug)]
 pub struct BuilderChunk {
     id      : u64,
     size    : usize,
@@ -33,6 +34,7 @@ impl Display for BuilderChunk {
     }
 }
 
+#[derive(Debug)]
 pub struct BuilderQueue {
     context_ptr : Arc<RwLock<Ctx>>, 
     chunks_allocated : u64,
