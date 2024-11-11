@@ -43,7 +43,7 @@ fn start(args : ReplicatorArgs) -> Result<(), OLRError> {
     replicator.run()
 }
 
-fn main() {
+fn init_logger() {
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(buf,
@@ -63,6 +63,10 @@ fn main() {
         })
         .filter(None, log::LevelFilter::Trace)
         .init();
+}
+
+fn main() {
+    init_logger();
 
     let args = ReplicatorArgs::parse();
 

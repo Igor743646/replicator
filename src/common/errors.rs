@@ -4,6 +4,7 @@ use std::backtrace::Backtrace;
 pub enum OLRErrorCode {
     Internal = 1,
     WrongFileName = 100000,
+    WrongDirName,
     GetFileMetadata,
     FileReading,
     FileWriting,
@@ -13,6 +14,8 @@ pub enum OLRErrorCode {
     MissingConfigField,
     WrongConfigFieldType,
     NotValidField,
+    MissingFile,
+    MissingDir,
     ChannelSend = 200000,
     ChannelRecv,
     UnknownCharset,
