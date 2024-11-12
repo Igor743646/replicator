@@ -141,7 +141,7 @@ impl ArchiveDigger for ArchiveDiggerOffline {
                     return None;
                 }
                 let mut digits = 0;
-                if "strdSTa".as_bytes().contains(&log_archive_format[i + 1]) {
+                if b"strdSTa".contains(&log_archive_format[i + 1]) {
                     // Some [0-9]*
                     let mut number: u64 = 0;
                     while j < file.len() && file[j] >= b'0' && file[j] <= b'9' {

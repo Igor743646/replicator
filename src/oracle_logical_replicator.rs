@@ -519,30 +519,57 @@ impl OracleLogicalReplicator {
                 _ => std::unimplemented!()
             };
 
+            if source_json.get("filter").is_some() {
+                let filter_json = self.get_json_field_o(&source_json, "filter")?;
+
+                self.check_config_fields(filter_json, ["table", "skip-xid", "dump-xid"])?;
+
+                if filter_json.get("table").is_some() {
+                    let table_array_json = self.get_json_field_a(&filter_json, "table")?;
+
+                    let mut metadata = metadata_ptr.write()
+                                .or(olr_err!(TakeLock, "Error with taking metadata lock").into())?;
+                    
+                    for k in 0 .. table_array_json.len() {
+                        let table_element_json = unsafe { table_array_json.get_unchecked(k) };
+
+                        self.check_config_fields(table_element_json, ["owner", "table", "key", "condition"])?;
+
+                        let owner = self.get_json_field_s(&table_element_json, "owner")?;
+                        let table = self.get_json_field_s(&table_element_json, "table")?;
+                        metadata.add_user(owner.clone());
+                        let element = metadata.add_object(owner, table, 0);
+
+                        if table_element_json.get("key").is_some() {
+                            let keys_string = self.get_json_field_s(&table_element_json, "key")?;
+                            
+                            let columns : Vec<&str> = keys_string.split(',')
+                                                                .filter(|x| (*x)
+                                                                .trim_matches([' ', '\n', '\t'])
+                                                                .is_empty())
+                                                                .collect();
+                            
+                            for key in columns {
+                                element.add_key(key.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
             handle_vector.push(spawn(Box::new(replicator))?);
         }
 
         info!("Start Replication!");
 
-        let res = main_reciver.recv();
-        
-        let res : Result<(), OLRError> = match res {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(thread_err)) => olr_err!(ThreadSpawn, "Thread error: {}", thread_err.to_string()).into(),
-            Err(channel_err) => {warn!("Recieve error: {}", channel_err); Ok(())}
-        };
-
         for i in handle_vector {
-            let result = i.join().expect("Join error");
-
-            result?;
-        }
-
-        if let Ok(()) = res  {
-            info!("Ok recive");
-        } else {
-            error!("Some error");
-            return res.err().unwrap().into();
+            let result = i.join();
+            
+            match result {
+                Ok(Ok(_)) => {},
+                Ok(Err(error)) => { return error.into(); },
+                Err(_) => { return olr_err!(ThreadSpawn, "Thread has panicked").into(); },
+            }
         }
 
         Ok(())
