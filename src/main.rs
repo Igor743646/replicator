@@ -48,14 +48,14 @@ fn init_logger() {
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(buf,
-                "{} [{}\x1b[0;37;40m] {:>40} ({:>4}) - {}",
-                chrono::Local::now().format("\x1b[0;32;40m%Y-%m-%d \x1b[0;33;40m%H:%M:%S \x1b[0;37;40m"),
+                "{} {:>16} {:>40} ({:>4}) - {}",
+                chrono::Local::now().format("\x1b[92m%Y-%m-%d \x1b[93m%H:%M:%S \x1b[0m"),
                 match record.level() {
-                    log::Level::Error => "\x1b[38;5;124mERROR",
-                    log::Level::Warn => "\x1b[38;5;196m WARN",
-                    log::Level::Info => "\x1b[38;5;226m INFO",
-                    log::Level::Debug => "\x1b[38;5;020mDEBUG",
-                    log::Level::Trace => "\x1b[38;5;15mTRACE",
+                    log::Level::Error => "[\x1b[91mERROR\x1b[0m]",
+                    log::Level::Warn => "[\x1b[95mWARN\x1b[0m]",
+                    log::Level::Info => "[\x1b[93mINFO\x1b[0m]",
+                    log::Level::Debug => "[\x1b[94mDEBUG\x1b[0m]",
+                    log::Level::Trace => "[\x1b[97mTRACE\x1b[0m]",
                 },
                 record.file().unwrap_or("UNKNOWN FILE"),
                 record.line().unwrap_or(u32::MAX),
@@ -71,14 +71,14 @@ fn init_logger() {
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(buf,
-                "{} [{}\x1b[0;37;40m] {}",
-                chrono::Local::now().format("\x1b[0;32;40m%Y-%m-%d \x1b[0;33;40m%H:%M:%S \x1b[0;37;40m"),
+                "{} {:>16} - {}",
+                chrono::Local::now().format("\x1b[92m%Y-%m-%d \x1b[93m%H:%M:%S \x1b[0m"),
                 match record.level() {
-                    log::Level::Error => "\x1b[38;5;124mERROR",
-                    log::Level::Warn => "\x1b[38;5;196m WARN",
-                    log::Level::Info => "\x1b[38;5;226m INFO",
-                    log::Level::Debug => "\x1b[38;5;020mDEBUG",
-                    log::Level::Trace => "\x1b[38;5;15mTRACE",
+                    log::Level::Error => "[\x1b[91mERROR\x1b[0m]",
+                    log::Level::Warn => "[\x1b[95mWARN\x1b[0m]",
+                    log::Level::Info => "[\x1b[93mINFO\x1b[0m]",
+                    log::Level::Debug => "[\x1b[94mDEBUG\x1b[0m]",
+                    log::Level::Trace => "[\x1b[97mTRACE\x1b[0m]",
                 },
                 record.args(),
             )
