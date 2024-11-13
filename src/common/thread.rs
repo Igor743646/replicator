@@ -31,7 +31,7 @@ pub fn spawn(thread : Box<dyn Thread + Send + Sync>) -> Result<JoinHandle<Result
         .spawn(move || -> Result<(), OLRError> {
             thread.entry_point()
         })
-        .or_else(|err| olr_err!(ThreadSpawn, "Error while spawn thread {}: {}", alias, err.to_string()).into())?;
+        .or_else(|err| olr_err!(ThreadSpawn, "Error while spawn thread {}: {}", alias, err.to_string()))?;
 
     Ok(handle)
 }

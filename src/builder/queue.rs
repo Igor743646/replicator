@@ -47,7 +47,7 @@ impl BuilderQueue {
         
         let chunk: MemoryChunk = {
             let mut context  = context_ptr.write()
-                                                                     .or(olr_err!(TakeLock, "Error with other thread").into())?;
+                                                                     .or(olr_err!(TakeLock, "Error with other thread"))?;
             context.get_chunk()?
         };
 

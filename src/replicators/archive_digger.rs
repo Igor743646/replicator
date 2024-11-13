@@ -1,14 +1,16 @@
 use core::fmt;
-use std::collections::VecDeque;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, VecDeque};
 use std::fmt::Debug;
 use std::path::PathBuf;
 use log::{info, trace, warn};
 
-use crate::{common::errors::OLRError, olr_err, parser::Parser};
+use crate::common::types::TypeSeq;
+use crate::{common::errors::OLRError, olr_err, parser::parser_impl::Parser};
 use crate::common::OLRErrorCode::*;
 
 pub trait ArchiveDigger where Self: Send + Sync + Debug {
-    fn get_parsers_queue(&self) -> Result<VecDeque<Parser>, OLRError>;
+    fn get_parsers_queue(&self) -> Result<BinaryHeap<Reverse<Parser>>, OLRError>;
     fn get_sequence_from_file(&self, log_archive_format : &String, file : &PathBuf) -> Option<u64>;
 }
 
@@ -16,7 +18,7 @@ pub struct ArchiveDiggerOffline {
     archive_log_format : String, 
     db_recovery_file_destination : String,
     context : String,
-    min_sequence : Option<u64>,
+    min_sequence : Option<TypeSeq>,
     mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>,
 }
 
@@ -32,7 +34,7 @@ unsafe impl Sync for ArchiveDiggerOffline {}
 impl ArchiveDiggerOffline {
     pub fn new(archive_log_format : String, db_recovery_file_destination : String,
         context : String,  
-        min_sequence : Option<u64>, mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>) -> Self {
+        min_sequence : Option<TypeSeq>, mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>) -> Self {
         Self {
             archive_log_format, 
             db_recovery_file_destination,
@@ -44,9 +46,9 @@ impl ArchiveDiggerOffline {
 }
 
 impl ArchiveDigger for ArchiveDiggerOffline {
-    fn get_parsers_queue(&self) -> Result<VecDeque<Parser>, OLRError> {
+    fn get_parsers_queue(&self) -> Result<BinaryHeap<Reverse<Parser>>, OLRError> {
         if self.archive_log_format.is_empty() {
-            return olr_err!(MissingFile, "Missing location of archived redo logs. Archive log format is empty.").into();
+            return olr_err!(MissingFile, "Missing location of archived redo logs. Archive log format is empty.");
         }
         
         let mapped_path: PathBuf = [
@@ -57,15 +59,15 @@ impl ArchiveDigger for ArchiveDiggerOffline {
         let mapped_path = (self.mapping_fn)(mapped_path);
 
         if !mapped_path.is_dir() {
-            return olr_err!(WrongDirName, "Not a directory: {}", mapped_path.display()).into();
+            return olr_err!(WrongDirName, "Not a directory: {}", mapped_path.display());
         }
 
         trace!("Check path: {}", mapped_path.display());
 
         let directory = mapped_path.read_dir()
-            .or(olr_err!(MissingDir, "Can not read directory: {}", mapped_path.display()).into())?;
+            .or(olr_err!(MissingDir, "Can not read directory: {}", mapped_path.display()))?;
 
-        let mut parser_queue = VecDeque::new();
+        let mut parser_queue = BinaryHeap::new();
 
         for object in directory {
             if let Err(err) = object {
@@ -94,7 +96,7 @@ impl ArchiveDigger for ArchiveDiggerOffline {
             info!("Check path: {}", object_path.display());
 
             let directory = object_path.read_dir()
-                .or(olr_err!(MissingDir, "Can not read directory: {}", object_path.display()).into())?;
+                .or(olr_err!(MissingDir, "Can not read directory: {}", object_path.display()))?;
 
             for archive_file in directory {
                 if let Err(err) = archive_file {
@@ -110,7 +112,7 @@ impl ArchiveDigger for ArchiveDiggerOffline {
                     continue;
                 }
 
-                let sequence = unsafe { sequence.unwrap_unchecked() };
+                let sequence: TypeSeq = unsafe { sequence.unwrap_unchecked().into() };
 
                 if self.min_sequence.is_some() && sequence < self.min_sequence.unwrap() {
                     info!("Skip sequence {}", sequence);
@@ -119,7 +121,7 @@ impl ArchiveDigger for ArchiveDiggerOffline {
 
                 info!("Found sequence: {:?}", sequence);
 
-                parser_queue.push_back(Parser {  });
+                parser_queue.push(Reverse(Parser::new(archive_file, sequence)));
             }
         }
 
@@ -193,7 +195,7 @@ mod tests {
             "o1_mf_%t_%s_%h_.arc".to_string(),
             "".to_string(),
             "DB_NAME".to_string(),
-            Some(min_seq),
+            Some(min_seq.into()),
             Box::new(|path| -> PathBuf {
                 match path.to_str().unwrap() {
                     r"/opt/oracle/fst/archivelog" => r"/data/d2/archivelog".into(),

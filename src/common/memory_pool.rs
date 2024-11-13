@@ -28,7 +28,7 @@ impl MemoryChunk {
             let memory: *mut u8 = alloc_zeroed(Self::MEMORY_LAYOUT);
 
             if memory.is_null() {
-                return olr_err!(MemoryAllocation, "Memory chunk allocation failed").into();
+                return olr_err!(MemoryAllocation, "Memory chunk allocation failed");
             }
 
             data_ptr = NonNull::new_unchecked(std::ptr::slice_from_raw_parts_mut(memory, Self::MEMORY_LAYOUT.size()));

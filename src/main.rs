@@ -30,13 +30,13 @@ fn start(args : ReplicatorArgs) -> Result<(), OLRError> {
     info!("OS: {}; Arch: {}; Family: {}", std::env::consts::OS, std::env::consts::ARCH, std::env::consts::FAMILY);
 
     if !args.file.ends_with(".json") {
-        return olr_err!(WrongFileName, "Wrong config file name: {}", args.file).into();
+        return olr_err!(WrongFileName, "Wrong config file name: {}", args.file);
     } 
 
     info!("Config file name: {}", args.file);
 
     if let Err(err) = std::fs::metadata(&args.file) {
-        return olr_err!(GetFileMetadata, "Get metadata from file: {} error: {}", args.file, err.to_string()).into();
+        return olr_err!(GetFileMetadata, "Get metadata from file: {} error: {}", args.file, err.to_string());
     }
 
     let replicator = oracle_logical_replicator::OracleLogicalReplicator::new(args.file);

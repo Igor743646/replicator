@@ -1,4 +1,4 @@
-use std::backtrace::Backtrace;
+use std::{backtrace::Backtrace, error::Error};
 
 #[derive(Debug, Copy, Clone)]
 pub enum OLRErrorCode {
@@ -16,6 +16,7 @@ pub enum OLRErrorCode {
     NotValidField,
     MissingFile,
     MissingDir,
+    ParseError,
     ChannelSend = 200000,
     ChannelRecv,
     UnknownCharset,
@@ -60,13 +61,26 @@ impl std::fmt::Display for OLRError {
     }
 }
 
+impl Error for OracleLogicalReplicatorError {}
+
 #[macro_export]
 macro_rules! olr_err {
     ($code:tt, $message:expr, $($args:tt)*) => {
-        $crate::common::errors::OLRError::new(file!(), line!(), $code, format!($message, $($args)*))
+        $crate::common::errors::OLRError::new(file!(), line!(), $code, format!($message, $($args)*)).into()
     };
 
     ($code:tt, $message:expr) => {
-        $crate::common::errors::OLRError::new(file!(), line!(), $code, format!($message))
+        $crate::common::errors::OLRError::new(file!(), line!(), $code, format!($message)).into()
+    };
+}
+
+#[macro_export]
+macro_rules! olr_perr {
+    ($message:expr, $($args:tt)*) => {
+        $crate::common::errors::OLRError::new(file!(), line!(), ParseError, format!($message, $($args)*)).into()
+    };
+
+    ($message:expr) => {
+        $crate::common::errors::OLRError::new(file!(), line!(), ParseError, format!($message)).into()
     };
 }

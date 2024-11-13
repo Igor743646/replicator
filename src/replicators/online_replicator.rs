@@ -1,7 +1,8 @@
-use std::{sync::{mpsc::Sender, Arc, RwLock}, thread::sleep, time};
-use log::{debug, info};
+use std::{cmp::Reverse, sync::{mpsc::Sender, Arc, RwLock}, thread::sleep, time};
+use clap::error;
+use log::{debug, info, warn};
 
-use crate::{builder::JsonBuilder, common::{self, errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err};
+use crate::{builder::JsonBuilder, common::{self, errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err, replicators::archive_digger};
 use common::OLRErrorCode::*;
 
 use super::archive_digger::ArchiveDigger;
@@ -23,17 +24,15 @@ pub struct OnlineReplicator {
     user            : String, 
     password        : String, 
     server          : String,
-
-    main_channel    : Sender<Result<(), OLRError>>,
 } 
 
 impl OnlineReplicator {
     pub fn new(context_ptr : Arc<RwLock<Ctx>>, builder_ptr : Arc<RwLock<JsonBuilder>>, metadata_ptr : Arc<RwLock<Metadata>>, archive_digger  : Box<dyn ArchiveDigger>,
-         alias : String, database_name : String, user : String, password : String, server : String, main_channel : Sender<Result<(), OLRError>>) -> Self {
+         alias : String, database_name : String, user : String, password : String, server : String) -> Self {
         debug!("Initialize OnlineReplicator");
         Self {
             context_ptr, builder_ptr, metadata_ptr, archive_digger,
-            alias, database_name, user, password, server, main_channel
+            alias, database_name, user, password, server
         }
     }
 }
@@ -45,6 +44,18 @@ impl OnlineReplicator {
 impl Thread for OnlineReplicator {
     fn run(&self) -> Result<(), OLRError> {
         
+        let mut parsers_queue = self.archive_digger.get_parsers_queue().unwrap();
+        
+        while let Some(Reverse(mut parser)) = parsers_queue.pop() {
+            debug!("Parse sequence: {}", parser.sequence());
+
+            let res = parser.parse();
+
+            if let Err(error) = res {
+                warn!("Can not parse sequence: {}. Stop replication", parser.sequence());
+                return error.into();
+            }
+        }
 
         debug!("Stop replicator. Thread: {:?} alias: {}", self.thread_id(), self.alias());
         Ok(())

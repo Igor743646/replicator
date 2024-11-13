@@ -13,7 +13,7 @@
               "user": "IGOR",
               "password": "nhbgrbkk2001",
               "server": "unknown",
-              "start-seq": 238,
+              "start-seq": 175,
               "start-scn": 19632726,
               "redo-log": [
                   "/mnt/fors_oracle/data/d3/oracle/fra/FST/archivelog/2024_10_28/o1_mf_1_238_mkyvzcmq_.arc"
