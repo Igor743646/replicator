@@ -1,3 +1,0 @@
-@startuml Architecture
-Replicator -> Writer : start
-@enduml 

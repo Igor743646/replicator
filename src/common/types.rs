@@ -1,12 +1,18 @@
 use std::{default, fmt::{Debug, Display}};
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct TypeScn(u64);
 
 impl default::Default for TypeScn {
     fn default() -> Self {
         Self {0 : 0xFFFFFFFFFFFFFFFF}
+    }
+}
+
+impl Into<u64> for TypeScn {
+    fn into(self) -> u64 {
+        self.0
     }
 }
 
@@ -16,40 +22,19 @@ impl From<u64> for TypeScn {
     }
 }
 
+impl std::fmt::Debug for TypeScn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({:04X}.{:04X}.{:08X})", self.0, (self.0 >> 48) & 0xFFFF, (self.0 >> 32) & 0xFFFF, self.0 & 0xFFFFFFFF)
+    }
+}
+
 impl std::fmt::Display for TypeScn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)?;
-        std::unimplemented!();
+        write!(f, "{} ({:04X}.{:04X}.{:08X})", self.0, (self.0 >> 48) & 0xFFFF, (self.0 >> 32) & 0xFFFF, self.0 & 0xFFFFFFFF)
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
-pub struct TypeSeq(u32);
-
-impl default::Default for TypeSeq {
-    fn default() -> Self {
-        Self {0 : 0}
-    }
-}
-
-impl From<u32> for TypeSeq {
-    fn from(val: u32) -> Self {
-        Self {0 : val}
-    }
-}
-
-impl From<u64> for TypeSeq {
-    fn from(val: u64) -> Self {
-        Self {0 : val as u32}
-    }
-}
-
-impl Display for TypeSeq {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
+pub type TypeSeq = u32;
 pub type TypeConId = i16;
 
 #[derive(Debug, Default)]

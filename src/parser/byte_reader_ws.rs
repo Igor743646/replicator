@@ -1,8 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
 use bytebuffer::ByteReader;
-
-use crate::common::types::TypeRBA;
+use bytebuffer::Endian::*;
+use crate::common::types::TypeTimestamp;
+use crate::common::types::{TypeRBA, TypeScn};
 
 use super::parser_impl::BlockHeader;
 use std::io::Result;
@@ -48,6 +49,31 @@ impl<'a> ByteReaderWithSkip<'a> {
             rba,
             checksum
         })
+    }
+
+    pub fn read_scn(&mut self) -> Result<TypeScn> {
+        let base : u64 = self.read_u32()? as u64;
+        let wrap1 : u64 = self.read_u16()? as u64;
+        let wrap2 : u64 = self.read_u16()? as u64;
+
+        if (base | (wrap1 << 32)) == 0xFFFFFFFFFFFF {
+            return Ok(TypeScn::default());
+        }
+
+        let mut res = base;
+
+        if wrap1 & 0x8000 != 0 {
+            res |= wrap2 << 32;
+            res |= (wrap1 & 0x7FFF) << 48;
+        } else {
+            res |= wrap1 << 32;
+        }
+
+        Ok(TypeScn::from(res))
+    }
+
+    pub fn read_timestamp(&mut self) -> Result<TypeTimestamp> {
+        Ok(self.read_u32()?.into())
     }
 
     pub fn from_bytes(bytes: &'a [u8]) -> ByteReaderWithSkip {
@@ -115,4 +141,53 @@ impl<'a> ByteReaderWithSkip<'a> {
         str.pop();
         str
     }
+}
+
+#[cfg(test)]
+mod test_brws {
+    use super::ByteReaderWithSkip;
+    use std::io::Result;
+
+    #[test]
+    fn read_scn() -> Result<()> {
+        let buffer: [u8; 16] = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,   0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00];
+        let mut reader = ByteReaderWithSkip::from_bytes(&buffer);
+
+        let scn1 = reader.read_scn()?;
+        let scn2 = reader.read_scn()?;
+
+        assert_eq!(Into::<u64>::into(scn1), u64::MAX);
+        assert_eq!(Into::<u64>::into(scn2), u64::MAX);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_scn2_little() -> Result<()> {
+        let buffer: [u8; 16] = [0x7A, 0x90, 0xA1, 0x06, 0x55, 0xA4, 0x24, 0x00,   0x7A, 0x90, 0xA1, 0x06, 0x55, 0x24, 0x00, 0x00];
+        let mut reader = ByteReaderWithSkip::from_bytes(&buffer);
+        reader.set_endian(bytebuffer::Endian::LittleEndian);
+        let scn1 = reader.read_scn()?;
+        let scn2 = reader.read_scn()?;
+
+        assert_eq!(Into::<u64>::into(scn1), 0x2455002406A1907A, "left: {}", scn1);
+        assert_eq!(Into::<u64>::into(scn2), 0x0000245506A1907A, "left: {}", scn2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn read_scn2_big() -> Result<()> {
+        let buffer: [u8; 16] = [0x7A, 0x90, 0xA1, 0x06, 0x55, 0xA4, 0x00, 0x00,   0x7A, 0x90, 0xA1, 0x06, 0xA5, 0x24, 0x00, 0x24];
+        let mut reader = ByteReaderWithSkip::from_bytes(&buffer);
+        reader.set_endian(bytebuffer::Endian::BigEndian);
+        let scn1 = reader.read_scn()?;
+        let scn2 = reader.read_scn()?;
+
+        assert_eq!(Into::<u64>::into(scn1), 0x000055A47A90A106, "left: {}", scn1);
+        assert_eq!(Into::<u64>::into(scn2), 0x252400247A90A106, "left: {}", scn2);
+
+        Ok(())
+    }
+
 }

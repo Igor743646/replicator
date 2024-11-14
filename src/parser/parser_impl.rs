@@ -1,5 +1,6 @@
 use std::fmt::Display;
-use std::io::{self, Seek};
+use std::fs::Metadata;
+use std::io::{self, BufReader, Seek};
 use std::num::NonZeroU32;
 use std::{fs::File, io::Read, path::PathBuf};
 
@@ -7,7 +8,8 @@ use bytebuffer::Endian::*;
 use clap::error::Result;
 use log::{debug, warn};
 
-use crate::common::types::{TypeRBA, TypeTimestamp};
+use crate::common::constants;
+use crate::common::types::{TypeRBA, TypeScn, TypeTimestamp};
 use crate::olr_perr;
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
 use crate::common::errors::OLRErrorCode::*;
@@ -41,6 +43,37 @@ pub struct RedoLogHeader {
     pub description : String,
     pub blocks_count : u32,
     pub resetlogs_id : TypeTimestamp,
+    pub resetlogs_scn : TypeScn,
+    pub hws : u32,
+    pub thread : u16,
+    pub first_scn : TypeScn,
+    pub first_time : TypeTimestamp,
+    pub next_scn : TypeScn,
+    pub next_time : TypeTimestamp,
+    pub eot : u8,
+    pub dis : u8,
+    pub zero_blocks : u8,
+    pub format_id : u8,
+    pub enabled_scn : TypeScn,
+    pub enabled_time : TypeTimestamp,
+    pub thread_closed_scn : TypeScn,
+    pub thread_closed_time : TypeTimestamp,
+    pub misc_flags : u32,
+    pub terminal_recovery_scn : TypeScn,
+    pub terminal_recovery_time : TypeTimestamp,
+    pub most_recent_scn : TypeScn,
+    pub largest_lwn : u32,
+    pub real_next_scn : TypeScn,
+    pub standby_apply_delay : u32,
+    pub prev_resetlogs_scn : TypeScn,
+    pub prev_resetlogs_id : TypeTimestamp,
+    pub misc_flags_2 : u32,
+    pub standby_log_close_time : TypeTimestamp,
+    pub thr : i32,
+    pub seq2 : i32,
+    pub scn2 : TypeScn,
+    pub redo_log_key : [u8; 16],
+    pub redo_log_key_flag : u16,
 }
 
 #[derive(Debug, Eq, Default)]
@@ -54,13 +87,13 @@ pub struct Parser {
 
 impl PartialEq for Parser {
     fn eq(&self, other: &Self) -> bool {
-        self.sequence == other.sequence
+        self.sequence.eq(&other.sequence)
     }
 }
 
 impl PartialOrd for Parser {
     fn lt(&self, other: &Self) -> bool {
-        self.sequence < other.sequence
+        self.sequence.lt(&other.sequence)
     }
 
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -85,7 +118,7 @@ impl Parser {
 
     pub fn parse(&mut self) -> Result<(), OLRError> {
         
-        let mut archive_log = File::open(&self.file_path)
+        let archive_log = File::open(&self.file_path)
                 .or(olr_err!(FileReading, "Can not open archive file"))?;
 
         let metadata = archive_log.metadata().unwrap();
@@ -94,28 +127,27 @@ impl Parser {
             warn!("The file size is not a multiple of 512. File size: {}", metadata.len());
         }
 
+        let mut redo_reader = BufReader::with_capacity(constants::MEMORY_CHUNK_SIZE as usize, archive_log);
 
-        self.check_file_header(&mut archive_log)?;
+        self.check_file_header(&mut redo_reader, &metadata)?;
 
         let block_size = self.block_size.unwrap().get() as usize;
-        archive_log.seek(io::SeekFrom::Start(block_size as u64)).unwrap();
+        redo_reader.seek(io::SeekFrom::Current((block_size - 512) as i64)).unwrap();
         let boxed_buffer = Box::<[u8]>::new_uninit_slice(block_size);
         let mut buffer = unsafe { boxed_buffer.assume_init() };
         let mut read_buffer = buffer.as_mut();
 
-        let redo_log_header = self.get_redo_log_info(&mut read_buffer, &mut archive_log)?;
+        let redo_log_header = self.get_redo_log_info(&mut read_buffer, &mut redo_reader)?;
 
-        while archive_log.read(read_buffer).unwrap() == block_size {
+        while redo_reader.read(read_buffer).unwrap() == block_size {
             let reader = ByteReaderWithSkip::from_bytes(&mut read_buffer);
             
-            debug!("{}", reader.to_hex_dump());
-            break;
         }
         
         Ok(())
     }
 
-    fn check_file_header(&mut self, archive_log : &mut File) -> Result<(), OLRError> {
+    fn check_file_header(&mut self, archive_log : &mut dyn Read, metadata : &Metadata) -> Result<(), OLRError> {
         let mut read_buffer = [0u8; 512];
         archive_log.read_exact(&mut read_buffer)
             .or(olr_perr!("Can not read first 512 bytes"))?;
@@ -155,7 +187,7 @@ impl Parser {
             return olr_perr!("Invalid block size: {}. {}", block_size, reader.to_error_hex_dump(20, 4));
         }
 
-        let file_size = archive_log.metadata().unwrap().len();
+        let file_size = metadata.len();
 
         if file_size != ((number_of_blocks + 1) * block_size) as u64 {
             return olr_perr!("Invalid file size. ({} + 1) * {} != {} bytes. {}", number_of_blocks, block_size, file_size, reader.to_error_hex_dump(24, 4));
@@ -164,7 +196,7 @@ impl Parser {
         Ok(())
     }
 
-    fn get_redo_log_info(&self, read_buffer : &mut [u8], archive_log : &mut File) -> Result<RedoLogHeader, OLRError> {
+    fn get_redo_log_info(&self, read_buffer : &mut [u8], archive_log : &mut dyn Read) -> Result<RedoLogHeader, OLRError> {
         archive_log.read_exact(read_buffer)
             .or(olr_perr!("Can not read redo log header"))?;
         let mut reader = ByteReaderWithSkip::from_bytes(read_buffer);
@@ -188,13 +220,45 @@ impl Parser {
         reader.skip_bytes(36);
         redo_log_header.description = String::from_utf8(reader.read_bytes(64).unwrap()).unwrap();
         redo_log_header.blocks_count = reader.read_u32().unwrap();
-        redo_log_header.resetlogs_id = reader.read_u32().unwrap().into();
-
-        debug!("{:#?}", redo_log_header);
-        debug!("{}", reader.to_hex_dump());
-
-
-
+        redo_log_header.resetlogs_id = reader.read_timestamp().unwrap();
+        redo_log_header.resetlogs_scn = reader.read_scn().unwrap();
+        redo_log_header.hws = reader.read_u32().unwrap();
+        redo_log_header.thread = reader.read_u16().unwrap();
+        reader.skip_bytes(2);
+        redo_log_header.first_scn = reader.read_scn().unwrap();
+        redo_log_header.first_time = reader.read_timestamp().unwrap();
+        redo_log_header.next_scn = reader.read_scn().unwrap();
+        redo_log_header.next_time = reader.read_timestamp().unwrap();
+        redo_log_header.eot = reader.read_u8().unwrap();
+        redo_log_header.dis = reader.read_u8().unwrap();
+        redo_log_header.zero_blocks = reader.read_u8().unwrap();
+        redo_log_header.format_id = reader.read_u8().unwrap();
+        redo_log_header.enabled_scn = reader.read_scn().unwrap();
+        redo_log_header.enabled_time = reader.read_timestamp().unwrap();
+        redo_log_header.thread_closed_scn = reader.read_scn().unwrap();
+        redo_log_header.thread_closed_time = reader.read_timestamp().unwrap();
+        reader.skip_bytes(4);
+        redo_log_header.misc_flags = reader.read_u32().unwrap();
+        redo_log_header.terminal_recovery_scn = reader.read_scn().unwrap();
+        redo_log_header.terminal_recovery_time = reader.read_timestamp().unwrap();
+        reader.skip_bytes(8);
+        redo_log_header.most_recent_scn = reader.read_scn().unwrap();
+        redo_log_header.largest_lwn = reader.read_u32().unwrap();
+        redo_log_header.real_next_scn = reader.read_scn().unwrap();
+        redo_log_header.standby_apply_delay = reader.read_u32().unwrap();
+        redo_log_header.prev_resetlogs_scn = reader.read_scn().unwrap();
+        redo_log_header.prev_resetlogs_id = reader.read_timestamp().unwrap();
+        redo_log_header.misc_flags_2 = reader.read_u32().unwrap();
+        reader.skip_bytes(4);
+        redo_log_header.standby_log_close_time = reader.read_timestamp().unwrap();
+        reader.skip_bytes(124);
+        redo_log_header.thr = reader.read_i32().unwrap();
+        redo_log_header.seq2 = reader.read_i32().unwrap();
+        redo_log_header.scn2 = reader.read_scn().unwrap();
+        redo_log_header.redo_log_key.copy_from_slice( reader.read_bytes(16).unwrap().as_slice()); 
+        reader.skip_bytes(16);
+        redo_log_header.redo_log_key_flag = reader.read_u16().unwrap();
+        reader.skip_bytes(30);
 
         Ok(redo_log_header)
     }

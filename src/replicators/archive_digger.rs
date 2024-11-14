@@ -11,7 +11,7 @@ use crate::common::OLRErrorCode::*;
 
 pub trait ArchiveDigger where Self: Send + Sync + Debug {
     fn get_parsers_queue(&self) -> Result<BinaryHeap<Reverse<Parser>>, OLRError>;
-    fn get_sequence_from_file(&self, log_archive_format : &String, file : &PathBuf) -> Option<u64>;
+    fn get_sequence_from_file(&self, log_archive_format : &String, file : &PathBuf) -> Option<u32>;
 }
 
 pub struct ArchiveDiggerOffline {
@@ -128,12 +128,12 @@ impl ArchiveDigger for ArchiveDiggerOffline {
         Ok(parser_queue)
     }
 
-    fn get_sequence_from_file(&self, log_archive_format : &String, file : &PathBuf) -> Option<u64> {
+    fn get_sequence_from_file(&self, log_archive_format : &String, file : &PathBuf) -> Option<u32> {
         let log_archive_format = log_archive_format.as_bytes();
         let binding = file.file_name().unwrap().to_str().unwrap().to_string();
         let file = binding.as_bytes();
         
-        let mut sequence : u64 = 0;
+        let mut sequence : u32 = 0;
         let mut i = 0;
         let mut j = 0;
 
@@ -145,15 +145,15 @@ impl ArchiveDigger for ArchiveDiggerOffline {
                 let mut digits = 0;
                 if b"strdSTa".contains(&log_archive_format[i + 1]) {
                     // Some [0-9]*
-                    let mut number: u64 = 0;
+                    let mut number: u32 = 0;
                     while j < file.len() && file[j] >= b'0' && file[j] <= b'9' {
-                        number = number * 10 + (file[j] - b'0') as u64;
+                        number = number * 10 + (file[j] - b'0') as u32;
                         j += 1;
                         digits += 1;
                     }
 
                     if log_archive_format[i + 1] == b's' || log_archive_format[i + 1] == b'S' {
-                        sequence = number;
+                        sequence = number as u32;
                     }
                     i += 2;
                 } else if log_archive_format[i + 1] == b'h' {
@@ -195,7 +195,7 @@ mod tests {
             "o1_mf_%t_%s_%h_.arc".to_string(),
             "".to_string(),
             "DB_NAME".to_string(),
-            Some(min_seq.into()),
+            Some(min_seq as u32),
             Box::new(|path| -> PathBuf {
                 match path.to_str().unwrap() {
                     r"/opt/oracle/fst/archivelog" => r"/data/d2/archivelog".into(),
