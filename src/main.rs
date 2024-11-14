@@ -1,6 +1,5 @@
 use clap::Parser;
 use std::io::Write;
-use std::iter::Scan;
 use std::u32;
 use log::{error, info};
 

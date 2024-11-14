@@ -5,3 +5,9 @@ pub const MEMORY_ALIGNMENT: u64 = 512;
 
 pub const OPTIONS_SYSTEM_TABLE : u8 = 1;
 pub const OPTIONS_SCHEMA_TABLE : u8 = 2;
+
+pub const REDO_VERSION_12_1 : u32 = 0x0C100000;
+pub const REDO_VERSION_12_2 : u32 = 0x0C200000;
+pub const REDO_VERSION_18_0 : u32 = 0x12000000;
+pub const REDO_VERSION_19_0 : u32 = 0x13000000;
+pub const REDO_VERSION_23_0 : u32 = 0x17000000;

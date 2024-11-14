@@ -1,11 +1,11 @@
 use std::ops::{Deref, DerefMut};
 
 use bytebuffer::ByteReader;
-use bytebuffer::Endian::*;
+use crate::common::constants::REDO_VERSION_12_1;
 use crate::common::types::TypeTimestamp;
 use crate::common::types::{TypeRBA, TypeScn};
 
-use super::parser_impl::BlockHeader;
+use super::parser_impl::{BlockHeader, RedoRecordHeader, RedoRecordHeaderExpansion};
 use std::io::Result;
 
 pub struct ByteReaderWithSkip<'a>(ByteReader<'a>);
@@ -76,6 +76,40 @@ impl<'a> ByteReaderWithSkip<'a> {
         Ok(self.read_u32()?.into())
     }
 
+    pub fn read_redo_record_header(&mut self, version : u32) -> Result<RedoRecordHeader> {
+        let mut result = RedoRecordHeader::default();
+        
+        result.record_size = self.read_u32()?;
+        result.vld = self.read_u8()?;
+        self.skip_bytes(1);
+        result.scn = (((self.read_u16()? as u64) << 32) |
+                        (self.read_u32()? as u64)).into();
+        result.sub_scn = self.read_u16()?;
+        self.skip_bytes(2);
+
+        if version >= REDO_VERSION_12_1 {
+            result.container_uid = Some(self.read_u32()?);
+            self.skip_bytes(4);
+        } else {
+            self.skip_bytes(8);
+        }
+
+        if result.vld & 0x04 != 0 {
+            let mut exp = RedoRecordHeaderExpansion::default();
+            exp.record_num = self.read_u16()?;
+            exp.record_num_max = self.read_u16()?;
+            exp.records_count = self.read_u32()?;
+            self.skip_bytes(8);
+            exp.records_scn = self.read_scn()?;
+            exp.scn1 = self.read_scn()?;
+            exp.scn2 = self.read_scn()?;
+            exp.records_timestamp = self.read_timestamp()?;
+            result.expansion = Some(exp);
+        }
+
+        Ok(result)
+    }
+
     pub fn from_bytes(bytes: &'a [u8]) -> ByteReaderWithSkip {
         Self(ByteReader::from_bytes(bytes))
     }
@@ -86,6 +120,7 @@ impl<'a> ByteReaderWithSkip<'a> {
         self.0.set_rpos(rpos);
     }
 
+    #[allow(dead_code)]
     pub fn to_hex_dump(&self) -> String {
         let mut str = "\n                  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F".to_string();
         let mut cnt: usize = 0;
@@ -121,11 +156,11 @@ impl<'a> ByteReaderWithSkip<'a> {
         let mut cnt: usize = 0;
         
         for b in self.0.as_bytes() {
-            if start == cnt {
-                str += "\x1b[4;91m";
-            }
             if cnt % 32 == 0 {
                 str += &format!("\n{:016X}: ", cnt);
+            }
+            if start == cnt {
+                str += "\x1b[4;91m";
             }
             if *b == 0 && (cnt < start || cnt > start + size) {
                 str += &format!("\x1b[2m{:01$X}\x1b[0m", b, 2);

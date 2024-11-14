@@ -6,10 +6,11 @@ use std::{fs::File, io::Read, path::PathBuf};
 
 use bytebuffer::Endian::*;
 use clap::error::Result;
-use log::{debug, warn};
+use env_logger::fmt::Timestamp;
+use log::{debug, info, warn};
 
 use crate::common::constants;
-use crate::common::types::{TypeRBA, TypeScn, TypeTimestamp};
+use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
 use crate::olr_perr;
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
 use crate::common::errors::OLRErrorCode::*;
@@ -76,6 +77,27 @@ pub struct RedoLogHeader {
     pub redo_log_key_flag : u16,
 }
 
+#[derive(Debug, Default)]
+pub struct RedoRecordHeaderExpansion {
+    pub record_num          : u16,
+    pub record_num_max      : u16,
+    pub records_count       : u32,
+    pub records_scn         : TypeScn,
+    pub scn1                : TypeScn,
+    pub scn2                : TypeScn,
+    pub records_timestamp   : TypeTimestamp,
+}
+
+#[derive(Debug, Default)]
+pub struct RedoRecordHeader {
+    pub record_size : u32,
+    pub vld : u8,
+    pub scn : TypeRecordScn,
+    pub sub_scn : u16,
+    pub container_uid : Option<u32>,
+    pub expansion : Option<RedoRecordHeaderExpansion>,
+}
+
 #[derive(Debug, Eq, Default)]
 pub struct Parser {
     file_path : PathBuf,
@@ -118,39 +140,110 @@ impl Parser {
 
     pub fn parse(&mut self) -> Result<(), OLRError> {
         
-        let archive_log = File::open(&self.file_path)
+        let archive_log_file = File::open(&self.file_path)
                 .or(olr_err!(FileReading, "Can not open archive file"))?;
 
-        let metadata = archive_log.metadata().unwrap();
+        let metadata = archive_log_file.metadata()
+                .or(olr_err!(FileReading, "Can not get metadata for checking file size"))?;
 
         if metadata.len() % 512 != 0 {
             warn!("The file size is not a multiple of 512. File size: {}", metadata.len());
         }
 
-        let mut redo_reader = BufReader::with_capacity(constants::MEMORY_CHUNK_SIZE as usize, archive_log);
+        let mut redo_buf_reader = BufReader::with_capacity(
+            constants::MEMORY_CHUNK_SIZE as usize, 
+            archive_log_file
+        );
 
-        self.check_file_header(&mut redo_reader, &metadata)?;
+        self.check_file_header(&mut redo_buf_reader, &metadata)?;
 
         let block_size = self.block_size.unwrap().get() as usize;
-        redo_reader.seek(io::SeekFrom::Current((block_size - 512) as i64)).unwrap();
+        redo_buf_reader.seek(io::SeekFrom::Current((block_size - 512) as i64)).unwrap();
         let boxed_buffer = Box::<[u8]>::new_uninit_slice(block_size);
         let mut buffer = unsafe { boxed_buffer.assume_init() };
         let mut read_buffer = buffer.as_mut();
 
-        let redo_log_header = self.get_redo_log_info(&mut read_buffer, &mut redo_reader)?;
+        let redo_log_header = self.get_redo_log_header(&mut read_buffer, &mut redo_buf_reader)?;
 
-        while redo_reader.read(read_buffer).unwrap() == block_size {
-            let reader = ByteReaderWithSkip::from_bytes(&mut read_buffer);
-            
+        let mut current_block: usize = 2;
+        let block_to_read = redo_log_header.blocks_count as usize - 2;
+
+
+        let mut records : Vec<Vec<u8>> = Vec::new();
+
+        for _ in 0 .. block_to_read {
+            let readed_size = redo_buf_reader.read(read_buffer).unwrap();
+            debug_assert_eq!(readed_size, block_size);
+
+            let mut reader = ByteReaderWithSkip::from_bytes(&mut read_buffer);
+            reader.set_endian(self.endian.unwrap());
+            let block_header = reader.read_block_header().unwrap(); // Skip block header
+            debug!("Process block: {}", block_header.rba.block_number);
+            match block_header.rba.offset {
+                0 => {  // Copy all block data in previous record
+                    let last_record = records.last_mut()
+                            .ok_or(olr_perr!("No previous record, but rba offset is zero. {}", reader.to_error_hex_dump(12, 2)))?;
+                    last_record.append(&mut reader.read_bytes(block_size - 16).unwrap());
+                },
+                offset if offset >= 16 && offset <= (block_size as u16 - 24) => {
+                    if offset > 16 {
+                        let last_record = records.last_mut()
+                            .ok_or(olr_perr!("No previous record, but rba offset > 16. {}", reader.to_error_hex_dump(12, 2)))?;
+                        last_record.append(&mut reader.read_bytes(offset as usize - 16).unwrap());
+                    }
+
+                    let mut cur_offset = offset as usize;
+                    while cur_offset + 24 < block_size {
+                        let redo_record_header = reader.read_redo_record_header(redo_log_header.oracle_version)
+                                .or(olr_perr!("Parse record header error. {}", reader.to_error_hex_dump(cur_offset, 24)))?;
+
+                        if redo_record_header.record_size == 0 {
+                            break;
+                        }
+
+                        let mut record : Vec<u8> = Vec::new();
+                        reader.reset_cursors();
+                        reader.skip_bytes(cur_offset);
+
+                        if cur_offset + redo_record_header.record_size as usize > block_size {
+                            record.append(&mut reader.read_bytes(block_size - cur_offset).unwrap());
+                            records.push(record);
+                            break;
+                        } else {
+                            record.append(&mut reader.read_bytes(redo_record_header.record_size as usize).unwrap());
+                            cur_offset += redo_record_header.record_size as usize;
+                            records.push(record);
+                        }
+                    }
+                },
+                err_val => {
+                    return olr_perr!("Invalid RBA offset: {}, expected : {{0, 16 .. block_size}}. {}", err_val, reader.to_error_hex_dump(12, 2));
+                }
+            }
+
+            debug!("{} ", block_header.rba);
+            current_block += 1;
         }
-        
+
+        info!("Read blocks: {}. Count of blocks from header: {}", current_block, redo_log_header.blocks_count);
+
+        for record in records.iter() {
+            let mut reader = ByteReaderWithSkip::from_bytes(record);
+            reader.set_endian(self.endian.unwrap());
+
+            debug!("{}", reader.to_hex_dump());
+            let size = reader.read_u32().unwrap();
+            assert!(size <= record.len() as u32, "{} {}", size, record.len() as u32);
+
+        }
+
         Ok(())
     }
 
     fn check_file_header(&mut self, archive_log : &mut dyn Read, metadata : &Metadata) -> Result<(), OLRError> {
         let mut read_buffer = [0u8; 512];
         archive_log.read_exact(&mut read_buffer)
-            .or(olr_perr!("Can not read first 512 bytes"))?;
+                .or(olr_perr!("Can not read first 512 bytes"))?;
         let mut reader = ByteReaderWithSkip::from_bytes(&mut read_buffer);
 
         if let Some(endian) = self.endian {
@@ -178,31 +271,34 @@ impl Parser {
         // let magic_number = reader.read_u32().unwrap();
 
         if block_flag != 0 {
-            return olr_perr!("Invalid block flag: {}. {}", block_flag, reader.to_error_hex_dump(0, 1));
+            return olr_perr!("Invalid block flag: {}, expected 0x00. {}", block_flag, reader.to_error_hex_dump(0, 1));
         }
 
-        if (file_type == 0x22 && (block_size == 512 || block_size == 1024)) || (file_type == 0x82 && block_size == 4096) {
-            self.block_size = Some(NonZeroU32::new(block_size).unwrap());
-        } else {
-            return olr_perr!("Invalid block size: {}. {}", block_size, reader.to_error_hex_dump(20, 4));
+        match (file_type, block_size) {
+            (0x22, 512) | (0x22, 1024) | (0x82, 4096) => {
+                self.block_size = Some(NonZeroU32::new(block_size).unwrap());
+            },
+            _ => {
+                return olr_perr!("Invalid block size: {}, expected one of {{512, 1024, 4096}}. {}", block_size, reader.to_error_hex_dump(20, 4));
+            }
         }
 
-        let file_size = metadata.len();
-
-        if file_size != ((number_of_blocks + 1) * block_size) as u64 {
-            return olr_perr!("Invalid file size. ({} + 1) * {} != {} bytes. {}", number_of_blocks, block_size, file_size, reader.to_error_hex_dump(24, 4));
+        if metadata.len() != ((number_of_blocks + 1) * block_size) as u64 {
+            return olr_perr!("Invalid file size. ({} + 1) * {} != {} bytes. {}", number_of_blocks, block_size, metadata.len(), reader.to_error_hex_dump(24, 4));
         }
         
         Ok(())
     }
 
-    fn get_redo_log_info(&self, read_buffer : &mut [u8], archive_log : &mut dyn Read) -> Result<RedoLogHeader, OLRError> {
+    fn get_redo_log_header(&self, read_buffer : &mut [u8], archive_log : &mut dyn Read) -> Result<RedoLogHeader, OLRError> {
         archive_log.read_exact(read_buffer)
             .or(olr_perr!("Can not read redo log header"))?;
+
+        // Validate block by its checksum
+        self.validate_block(read_buffer)?;
+
         let mut reader = ByteReaderWithSkip::from_bytes(read_buffer);
         reader.set_endian(self.endian.unwrap());
-
-        self.validate_block(read_buffer)?;
 
         let mut redo_log_header : RedoLogHeader = RedoLogHeader::default();
 

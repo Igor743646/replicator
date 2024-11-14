@@ -1,6 +1,5 @@
 use std::{default, fmt::{Debug, Display}};
 
-
 #[derive(Copy, Clone, PartialEq)]
 pub struct TypeScn(u64);
 
@@ -34,14 +33,47 @@ impl std::fmt::Display for TypeScn {
     }
 }
 
+#[derive(Copy, Clone, PartialEq)]
+pub struct TypeRecordScn(u64);
+
+impl default::Default for TypeRecordScn {
+    fn default() -> Self {
+        Self {0 : 0xFFFFFFFFFFFFFFFF}
+    }
+}
+
+impl Into<u64> for TypeRecordScn {
+    fn into(self) -> u64 {
+        self.0
+    }
+}
+
+impl From<u64> for TypeRecordScn {
+    fn from(val: u64) -> Self {
+        Self {0 : val}
+    }
+}
+
+impl std::fmt::Debug for TypeRecordScn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({:04X}.{:08X})", self.0, (self.0 >> 32) & 0xFFFF, self.0 & 0xFFFFFFFF)
+    }
+}
+
+impl std::fmt::Display for TypeRecordScn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({:04X}.{:08X})", self.0, (self.0 >> 32) & 0xFFFF, self.0 & 0xFFFFFFFF)
+    }
+}
+
 pub type TypeSeq = u32;
 pub type TypeConId = i16;
 
 #[derive(Debug, Default)]
 pub struct TypeRBA {
-    block_number    : u32,
-    sequence        : u32,
-    offset          : u16,
+    pub block_number    : u32,
+    pub sequence        : u32,
+    pub offset          : u16,
 }
 
 impl TypeRBA {
