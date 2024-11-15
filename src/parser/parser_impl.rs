@@ -211,6 +211,7 @@ impl Parser {
 
                     to_read = redo_record_header.record_size as usize;
                     let mut record = Vec::with_capacity(to_read);
+                    unsafe { record.set_len(to_read); }
                     record.resize(to_read, Default::default());
                     records.push_back(record);
                     reader.reset_cursor();
