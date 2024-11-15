@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fs::Metadata;
 use std::io::{self, BufReader, Seek};
@@ -5,7 +6,6 @@ use std::num::NonZeroU32;
 use std::time::Instant;
 use std::{fs::File, io::Read, path::PathBuf};
 
-use bytebuffer::Endian::*;
 use clap::error::Result;
 use log::{debug, info, warn};
 
@@ -15,7 +15,7 @@ use crate::olr_perr;
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
 use crate::common::errors::OLRErrorCode::*;
 
-use super::byte_reader_ws::ByteReaderWithSkip;
+use super::byte_reader::{self, ByteReader, Endian::*};
 
 #[derive(Debug, Default)]
 pub struct BlockHeader {
@@ -104,7 +104,7 @@ pub struct Parser {
     sequence : TypeSeq,
 
     block_size : Option<NonZeroU32>,
-    endian     : Option<bytebuffer::Endian>,
+    endian     : Option<byte_reader::Endian>,
 }
 
 impl PartialEq for Parser {
@@ -167,7 +167,7 @@ impl Parser {
 
         let redo_log_header = self.get_redo_log_header(&mut read_buffer, &mut redo_buf_reader)?;
 
-        let mut records : Vec<Vec<u8>> = Vec::with_capacity(100);
+        let mut records : VecDeque<Vec<u8>> = VecDeque::with_capacity(100);
         let mut to_read: usize = 0;
         let mut end_block: usize = 2;
 
@@ -175,7 +175,7 @@ impl Parser {
             let readed_size = redo_buf_reader.read(read_buffer).unwrap();
             debug_assert_eq!(readed_size, block_size);
 
-            let mut reader = ByteReaderWithSkip::from_bytes(&mut read_buffer);
+            let mut reader = ByteReader::from_bytes(&mut read_buffer);
             reader.set_endian(self.endian.unwrap());
 
             reader.skip_bytes(16); // Skip block header
@@ -189,17 +189,17 @@ impl Parser {
                 assert!(redo_record_header.expansion.is_some(), "Dump: {}", reader.to_error_hex_dump(16, 68));
                 end_block = current_block + redo_record_header.expansion.unwrap().records_count as usize;
 
-                reader.reset_cursors();
+                reader.reset_cursor();
                 reader.skip_bytes(16);
             }
 
-            while reader.get_rpos() < block_size {
+            while reader.cursor() < block_size {
                 if to_read == 0 {
-                    if reader.get_rpos() + 20 >= block_size {
+                    if reader.cursor() + 20 >= block_size {
                         break;
                     }
 
-                    let prev_offset = reader.get_rpos();
+                    let prev_offset = reader.cursor();
                     let redo_record_header = match reader.read_redo_record_header(redo_log_header.oracle_version) {
                         Ok(x) => x,
                         Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 24))
@@ -212,28 +212,32 @@ impl Parser {
                     to_read = redo_record_header.record_size as usize;
                     let mut record = Vec::with_capacity(to_read);
                     record.resize(to_read, Default::default());
-                    records.push(record);
-                    reader.reset_cursors();
+                    records.push_back(record);
+                    reader.reset_cursor();
                     reader.skip_bytes(prev_offset);
                 }
 
-                let to_copy = to_read.min(block_size - reader.get_rpos());
-                let record = records.last_mut().unwrap();
+                let to_copy = to_read.min(block_size - reader.cursor());
+                let record = records.back_mut().unwrap();
                 let already_read = record.len() - to_read;
                 let mut record = &mut record.as_mut_slice()[already_read..];
 
                 if let Err(err) = reader.read_bytes_into(to_copy, &mut record) {
-                    return olr_perr!("Can not write enough bytes to record: {} Reserved: {} Copy: {}. {}", record.len(), to_copy, err, reader.to_error_hex_dump(reader.get_rpos(), to_copy));
+                    return olr_perr!("Can not write enough bytes to record: {} Reserved: {} Copy: {}. {}", record.len(), to_copy, err, reader.to_error_hex_dump(reader.cursor(), to_copy));
                 }
                 
                 to_read -= to_copy;
+            }
+
+            if current_block + 1 == end_block {
+                records.clear();
             }
         }
 
         info!("Read {} blocks. Time elapsed: {:?}", redo_log_header.blocks_count, start_parsing_time.elapsed());
 
         for record in records.iter() {
-            let mut reader = ByteReaderWithSkip::from_bytes(record);
+            let mut reader = ByteReader::from_bytes(record);
             reader.set_endian(self.endian.unwrap());
             let size = reader.read_u32().unwrap();
             assert!(size == record.len() as u32, "{} {}", size, record.len() as u32);
@@ -246,7 +250,7 @@ impl Parser {
         let mut read_buffer = [0u8; 512];
         archive_log.read_exact(&mut read_buffer)
                 .or(olr_perr!("Can not read first 512 bytes"))?;
-        let mut reader = ByteReaderWithSkip::from_bytes(&mut read_buffer);
+        let mut reader = ByteReader::from_bytes(&mut read_buffer);
 
         if let Some(endian) = self.endian {
             reader.set_endian(endian);
@@ -262,7 +266,7 @@ impl Parser {
                     return olr_perr!("Unknown magic number in file header. {}", reader.to_error_hex_dump(28, 4));
                 },
             }
-            reader.reset_cursors();
+            reader.reset_cursor();
         }
 
         let block_flag = reader.read_u8().unwrap();
@@ -299,7 +303,7 @@ impl Parser {
         // Validate block by its checksum
         self.validate_block(read_buffer)?;
 
-        let mut reader = ByteReaderWithSkip::from_bytes(read_buffer);
+        let mut reader = ByteReader::from_bytes(read_buffer);
         reader.set_endian(self.endian.unwrap());
 
         let mut redo_log_header : RedoLogHeader = RedoLogHeader::default();
@@ -364,7 +368,7 @@ impl Parser {
     fn validate_block(&self, read_buffer : &[u8]) -> Result<(), OLRError> {
         let checksum = self.block_checksum(read_buffer);
         if checksum != 0 {
-            let mut reader = ByteReaderWithSkip::from_bytes(read_buffer);
+            let mut reader = ByteReader::from_bytes(read_buffer);
             reader.skip_bytes(14);
             let block_checksum = reader.read_u16().unwrap();
             return olr_perr!("Bad block. Checksums are not equal: {} != {}. {}", checksum ^ block_checksum, block_checksum, reader.to_error_hex_dump(14, 2));
@@ -374,7 +378,7 @@ impl Parser {
 
     fn block_checksum(&self, read_buffer : &[u8]) -> u16 {
         let block_size: usize = self.block_size.unwrap().get() as usize;
-        let mut reader = ByteReaderWithSkip::from_bytes(read_buffer);
+        let mut reader = ByteReader::from_bytes(read_buffer);
         reader.set_endian(self.endian.unwrap());
 
         debug_assert!(read_buffer.len() >= block_size);
