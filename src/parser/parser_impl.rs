@@ -2,11 +2,11 @@ use std::fmt::Display;
 use std::fs::Metadata;
 use std::io::{self, BufReader, Seek};
 use std::num::NonZeroU32;
+use std::time::Instant;
 use std::{fs::File, io::Read, path::PathBuf};
 
 use bytebuffer::Endian::*;
 use clap::error::Result;
-use env_logger::fmt::Timestamp;
 use log::{debug, info, warn};
 
 use crate::common::constants;
@@ -139,6 +139,8 @@ impl Parser {
     }
 
     pub fn parse(&mut self) -> Result<(), OLRError> {
+
+        let start_parsing_time = Instant::now();
         
         let archive_log_file = File::open(&self.file_path)
                 .or(olr_err!(FileReading, "Can not open archive file"))?;
@@ -165,13 +167,11 @@ impl Parser {
 
         let redo_log_header = self.get_redo_log_header(&mut read_buffer, &mut redo_buf_reader)?;
 
-        let mut current_block: usize = 2;
-        let block_to_read = redo_log_header.blocks_count as usize - 2;
+        let mut records : Vec<Vec<u8>> = Vec::with_capacity(100);
+        let mut to_read: usize = 0;
+        let mut end_block: usize = 2;
 
-
-        let mut records : Vec<Vec<u8>> = Vec::new();
-
-        for _ in 0 .. block_to_read {
+        for current_block in 2 .. redo_log_header.blocks_count as usize {
             let readed_size = redo_buf_reader.read(read_buffer).unwrap();
             debug_assert_eq!(readed_size, block_size);
 
@@ -179,53 +179,54 @@ impl Parser {
             reader.set_endian(self.endian.unwrap());
             let block_header = reader.read_block_header().unwrap(); // Skip block header
             debug!("Process block: {}", block_header.rba.block_number);
-            match block_header.rba.offset {
-                0 => {  // Copy all block data in previous record
-                    let last_record = records.last_mut()
-                            .ok_or(olr_perr!("No previous record, but rba offset is zero. {}", reader.to_error_hex_dump(12, 2)))?;
-                    last_record.append(&mut reader.read_bytes(block_size - 16).unwrap());
-                },
-                offset if offset >= 16 && offset <= (block_size as u16 - 24) => {
-                    if offset > 16 {
-                        let last_record = records.last_mut()
-                            .ok_or(olr_perr!("No previous record, but rba offset > 16. {}", reader.to_error_hex_dump(12, 2)))?;
-                        last_record.append(&mut reader.read_bytes(offset as usize - 16).unwrap());
+
+            if current_block == end_block {
+                let redo_record_header = reader.read_redo_record_header(redo_log_header.oracle_version)
+                        .or(olr_perr!("Parse record header error. {}", reader.to_error_hex_dump(16, 68)))?;
+
+                assert!(redo_record_header.expansion.is_some(), "Dump: {}", reader.to_error_hex_dump(16, 68));
+                end_block = current_block + redo_record_header.expansion.unwrap().records_count as usize;
+
+                reader.reset_cursors();
+                reader.skip_bytes(16);
+            }
+
+            while reader.get_rpos() < block_size {
+                if to_read == 0 {
+                    if reader.get_rpos() + 20 >= block_size {
+                        break;
                     }
 
-                    let mut cur_offset = offset as usize;
-                    while cur_offset + 24 < block_size {
-                        let redo_record_header = reader.read_redo_record_header(redo_log_header.oracle_version)
-                                .or(olr_perr!("Parse record header error. {}", reader.to_error_hex_dump(cur_offset, 24)))?;
+                    let prev_offset = reader.get_rpos();
+                    let redo_record_header = reader.read_redo_record_header(redo_log_header.oracle_version)
+                        .or(olr_perr!("Parse record header error. {}", reader.to_error_hex_dump(16, 24)))?;
 
-                        if redo_record_header.record_size == 0 {
-                            break;
-                        }
-
-                        let mut record : Vec<u8> = Vec::new();
-                        reader.reset_cursors();
-                        reader.skip_bytes(cur_offset);
-
-                        if cur_offset + redo_record_header.record_size as usize > block_size {
-                            record.append(&mut reader.read_bytes(block_size - cur_offset).unwrap());
-                            records.push(record);
-                            break;
-                        } else {
-                            record.append(&mut reader.read_bytes(redo_record_header.record_size as usize).unwrap());
-                            cur_offset += redo_record_header.record_size as usize;
-                            records.push(record);
-                        }
+                    if redo_record_header.record_size == 0 {
+                        break;
                     }
-                },
-                err_val => {
-                    return olr_perr!("Invalid RBA offset: {}, expected : {{0, 16 .. block_size}}. {}", err_val, reader.to_error_hex_dump(12, 2));
+
+                    to_read = redo_record_header.record_size as usize;
+                    let record = Vec::with_capacity(to_read);
+                    records.push(record);
+                    reader.reset_cursors();
+                    reader.skip_bytes(prev_offset);
                 }
+
+                let to_copy = to_read.min(block_size - reader.get_rpos());
+                let record = records.last_mut().unwrap();
+
+                if record.capacity() < record.len() + to_copy {
+                    return olr_perr!("Not enough record capacity: {}", reader.to_error_hex_dump(0, block_size));
+                }
+
+                record.append(&mut reader.read_bytes(to_copy).unwrap());
+                to_read -= to_copy;
             }
 
             debug!("{} ", block_header.rba);
-            current_block += 1;
         }
 
-        info!("Read blocks: {}. Count of blocks from header: {}", current_block, redo_log_header.blocks_count);
+        info!("Read {} blocks. Time elapsed: {:?}", redo_log_header.blocks_count, start_parsing_time.elapsed());
 
         for record in records.iter() {
             let mut reader = ByteReaderWithSkip::from_bytes(record);
@@ -233,8 +234,7 @@ impl Parser {
 
             debug!("{}", reader.to_hex_dump());
             let size = reader.read_u32().unwrap();
-            assert!(size <= record.len() as u32, "{} {}", size, record.len() as u32);
-
+            assert!(size == record.len() as u32, "{} {}", size, record.len() as u32);
         }
 
         Ok(())
