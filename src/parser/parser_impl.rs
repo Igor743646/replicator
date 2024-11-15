@@ -177,12 +177,14 @@ impl Parser {
 
             let mut reader = ByteReaderWithSkip::from_bytes(&mut read_buffer);
             reader.set_endian(self.endian.unwrap());
-            let block_header = reader.read_block_header().unwrap(); // Skip block header
-            debug!("Process block: {}", block_header.rba.block_number);
 
+            reader.skip_bytes(16); // Skip block header
+            
             if current_block == end_block {
-                let redo_record_header = reader.read_redo_record_header(redo_log_header.oracle_version)
-                        .or(olr_perr!("Parse record header error. {}", reader.to_error_hex_dump(16, 68)))?;
+                let redo_record_header = match reader.read_redo_record_header(redo_log_header.oracle_version) {
+                    Ok(x) => x,
+                    Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 68))
+                };
 
                 assert!(redo_record_header.expansion.is_some(), "Dump: {}", reader.to_error_hex_dump(16, 68));
                 end_block = current_block + redo_record_header.expansion.unwrap().records_count as usize;
@@ -198,15 +200,18 @@ impl Parser {
                     }
 
                     let prev_offset = reader.get_rpos();
-                    let redo_record_header = reader.read_redo_record_header(redo_log_header.oracle_version)
-                        .or(olr_perr!("Parse record header error. {}", reader.to_error_hex_dump(16, 24)))?;
+                    let redo_record_header = match reader.read_redo_record_header(redo_log_header.oracle_version) {
+                        Ok(x) => x,
+                        Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 24))
+                    };
 
                     if redo_record_header.record_size == 0 {
                         break;
                     }
 
                     to_read = redo_record_header.record_size as usize;
-                    let record = Vec::with_capacity(to_read);
+                    let mut record = Vec::with_capacity(to_read);
+                    record.resize(to_read, Default::default());
                     records.push(record);
                     reader.reset_cursors();
                     reader.skip_bytes(prev_offset);
@@ -214,16 +219,15 @@ impl Parser {
 
                 let to_copy = to_read.min(block_size - reader.get_rpos());
                 let record = records.last_mut().unwrap();
+                let already_read = record.len() - to_read;
+                let mut record = &mut record.as_mut_slice()[already_read..];
 
-                if record.capacity() < record.len() + to_copy {
-                    return olr_perr!("Not enough record capacity: {}", reader.to_error_hex_dump(0, block_size));
+                if let Err(err) = reader.read_bytes_into(to_copy, &mut record) {
+                    return olr_perr!("Can not write enough bytes to record: {} Reserved: {} Copy: {}. {}", record.len(), to_copy, err, reader.to_error_hex_dump(reader.get_rpos(), to_copy));
                 }
-
-                record.append(&mut reader.read_bytes(to_copy).unwrap());
+                
                 to_read -= to_copy;
             }
-
-            debug!("{} ", block_header.rba);
         }
 
         info!("Read {} blocks. Time elapsed: {:?}", redo_log_header.blocks_count, start_parsing_time.elapsed());
@@ -231,8 +235,6 @@ impl Parser {
         for record in records.iter() {
             let mut reader = ByteReaderWithSkip::from_bytes(record);
             reader.set_endian(self.endian.unwrap());
-
-            debug!("{}", reader.to_hex_dump());
             let size = reader.read_u32().unwrap();
             assert!(size == record.len() as u32, "{} {}", size, record.len() as u32);
         }

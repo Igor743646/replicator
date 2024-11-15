@@ -6,7 +6,7 @@ use crate::common::types::TypeTimestamp;
 use crate::common::types::{TypeRBA, TypeScn};
 
 use super::parser_impl::{BlockHeader, RedoRecordHeader, RedoRecordHeaderExpansion};
-use std::io::Result;
+use std::io::{Result, Write};
 
 pub struct ByteReaderWithSkip<'a>(ByteReader<'a>);
 
@@ -76,9 +76,17 @@ impl<'a> ByteReaderWithSkip<'a> {
         Ok(self.read_u32()?.into())
     }
 
+    #[inline]
     pub fn read_redo_record_header(&mut self, version : u32) -> Result<RedoRecordHeader> {
         let mut result = RedoRecordHeader::default();
         
+        if self.get_rpos() + 24 > self.len() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "could not read enough bytes from buffer",
+            ));
+        }
+
         result.record_size = self.read_u32()?;
         result.vld = self.read_u8()?;
         self.skip_bytes(1);
@@ -110,6 +118,21 @@ impl<'a> ByteReaderWithSkip<'a> {
         Ok(result)
     }
 
+    pub fn read_bytes_into(&mut self, size : usize, buffer : &mut impl Write) -> Result<()> {
+        self.flush_bits();
+        if self.get_rpos() + size > self.as_bytes().len() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "could not read enough bytes from buffer",
+            ));
+        }
+        let data = self.as_bytes();
+        let range = self.get_rpos() .. self.get_rpos() + size;
+        buffer.write(&data[range])?;
+        self.skip_bytes(size);
+        Ok(())
+    }
+
     pub fn from_bytes(bytes: &'a [u8]) -> ByteReaderWithSkip {
         Self(ByteReader::from_bytes(bytes))
     }
@@ -136,7 +159,7 @@ impl<'a> ByteReaderWithSkip<'a> {
                 str += "\x1b[0m";
             } else {
                 if *b == 0 {
-                    str += &format!("\x1b[2m{:01$X}\x1b[0m", b, 2);
+                    str += &format!("\x1b[2;90m{:01$X}\x1b[0m", b, 2);
                 } else {
                     str += &format!("{:01$X}", b, 2);
                 }
@@ -157,23 +180,30 @@ impl<'a> ByteReaderWithSkip<'a> {
         
         for b in self.0.as_bytes() {
             if cnt % 32 == 0 {
-                str += &format!("\n{:016X}: ", cnt);
+                str += &format!("\x1b[0m\n{:016X}: ", cnt);
+                if cnt > start && cnt < start + size - 1 {
+                    str += "\x1b[4;91m";
+                }
             }
             if start == cnt {
                 str += "\x1b[4;91m";
             }
             if *b == 0 && (cnt < start || cnt > start + size) {
-                str += &format!("\x1b[2m{:01$X}\x1b[0m", b, 2);
+                str += &format!("\x1b[2;90m{:01$X}\x1b[0m", b, 2);
             } else {
                 str += &format!("{:01$X}", b, 2);
             }
             if start + size - 1 == cnt {
                 str += "\x1b[0m";
             }
+            if cnt % 32 == 31 {
+                cnt += 1;
+                continue;
+            }
             str += [" ", "  "][((cnt + 1) % 8 == 0) as usize];
             cnt += 1;
         }
-        str.pop();
+        // str.pop();
         str
     }
 }
