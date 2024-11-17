@@ -12,18 +12,18 @@ pub trait Thread
     where Self : Send 
 {
     fn run(&self) -> Result<(), OLRError>;
-    fn alias(&self) -> &String;
-    fn thread_id(&self) -> ThreadId {
-        std::thread::current().id()
+    fn alias(&self) -> String;
+    fn thread_id(&self) -> u32 {
+        std::process::id()
     }
 
     fn entry_point(&self) -> Result<(), OLRError> {
-        debug!("Thread id: {:?} alias: {} started", self.thread_id(), self.alias());
+        debug!("Thread id: {} alias: {} started", self.thread_id(), self.alias());
         self.run()
     }
 }
 
-pub fn spawn(thread : Box<dyn Thread + Send + Sync>) -> Result<JoinHandle<Result<(), OLRError>>, OLRError> {
+pub fn spawn(thread : impl Thread + Send + Sync + 'static) -> Result<JoinHandle<Result<(), OLRError>>, OLRError> {
     let alias = thread.alias().to_string();
 
     let handle = std::thread::Builder::new()

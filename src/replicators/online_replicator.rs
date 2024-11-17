@@ -57,11 +57,11 @@ impl Thread for OnlineReplicator {
             }
         }
 
-        debug!("Stop replicator. Thread: {:?} alias: {}", self.thread_id(), self.alias());
+        debug!("Stop replicator. Thread id: {} alias: {}", self.thread_id(), self.alias());
         Ok(())
     }
 
-    fn alias(&self) -> &String {
-        &self.alias
+    fn alias(&self) -> String {
+        self.alias.clone()
     }
 }

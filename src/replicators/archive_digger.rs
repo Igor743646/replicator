@@ -3,9 +3,11 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, VecDeque};
 use std::fmt::Debug;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use log::{info, trace, warn};
 
 use crate::common::types::TypeSeq;
+use crate::ctx::Ctx;
 use crate::{common::errors::OLRError, olr_err, parser::parser_impl::Parser};
 use crate::common::OLRErrorCode::*;
 
@@ -15,16 +17,17 @@ pub trait ArchiveDigger where Self: Send + Sync + Debug {
 }
 
 pub struct ArchiveDiggerOffline {
+    context_ptr : Arc<RwLock<Ctx>>,
     archive_log_format : String, 
     db_recovery_file_destination : String,
-    context : String,
+    db_name : String,
     min_sequence : Option<TypeSeq>,
     mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>,
 }
 
 impl Debug for ArchiveDiggerOffline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ArchiveDiggerOffline {{ archive_log_format : {}, db_recovery_file_destination : {}, context : {}, min_sequence : {:?}}}", self.archive_log_format, self.db_recovery_file_destination, self.context, self.min_sequence)
+        write!(f, "ArchiveDiggerOffline {{ archive_log_format : {}, db_recovery_file_destination : {}, db_name : {}, min_sequence : {:?}}}", self.archive_log_format, self.db_recovery_file_destination, self.db_name, self.min_sequence)
     }
 }
 
@@ -32,13 +35,13 @@ unsafe impl Send for ArchiveDiggerOffline {}
 unsafe impl Sync for ArchiveDiggerOffline {}
 
 impl ArchiveDiggerOffline {
-    pub fn new(archive_log_format : String, db_recovery_file_destination : String,
-        context : String,  
-        min_sequence : Option<TypeSeq>, mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>) -> Self {
+    pub fn new(context : Arc<RwLock<Ctx>>, archive_log_format : String, db_recovery_file_destination : String,
+        db_name : String, min_sequence : Option<TypeSeq>, mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>) -> Self {
         Self {
+            context_ptr: context,
             archive_log_format, 
             db_recovery_file_destination,
-            context,
+            db_name,
             min_sequence,
             mapping_fn,
         }
@@ -53,7 +56,7 @@ impl ArchiveDigger for ArchiveDiggerOffline {
         
         let mapped_path: PathBuf = [
             &self.db_recovery_file_destination, 
-            &self.context, 
+            &self.db_name, 
             "archivelog"
         ].iter().collect();
         let mapped_path = (self.mapping_fn)(mapped_path);
@@ -121,7 +124,7 @@ impl ArchiveDigger for ArchiveDiggerOffline {
 
                 info!("Found sequence: {:?}", sequence);
 
-                parser_queue.push(Reverse(Parser::new(archive_file, sequence)));
+                parser_queue.push(Reverse(Parser::new(self.context_ptr.clone(), archive_file, sequence)));
             }
         }
 
@@ -186,12 +189,15 @@ impl ArchiveDigger for ArchiveDiggerOffline {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, str::FromStr};
-    use crate::{common::errors::OLRError, init_logger};
+    use std::{path::PathBuf, str::FromStr, sync::{Arc, RwLock}};
+    use crate::{common::errors::OLRError, ctx::{Ctx, Dump}, init_logger};
     use super::{ArchiveDigger, ArchiveDiggerOffline};
 
     fn create_offline_digger(min_seq : u64) -> ArchiveDiggerOffline {
+        let context: Arc<RwLock<crate::ctx::Ctx>> = Arc::new(RwLock::new(Ctx::new(
+            Dump::default(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 1).unwrap()));
         ArchiveDiggerOffline::new(
+            context,
             "o1_mf_%t_%s_%h_.arc".to_string(),
             "".to_string(),
             "DB_NAME".to_string(),

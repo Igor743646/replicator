@@ -41,6 +41,17 @@ pub struct BuilderQueue {
     queue : VecDeque<BuilderChunk>,
 }
 
+impl Drop for BuilderQueue {
+    fn drop(&mut self) {
+        let mut context  = self.context_ptr.write()
+                .or(olr_err!(TakeLock, "Error with other thread")).unwrap();
+        while let Some(chunk) = self.queue.pop_front() {
+            context.free_chunk(chunk.data);
+            self.chunks_allocated -= 1;
+        }
+    }
+}
+
 impl BuilderQueue {
     pub fn new(context_ptr : Arc<RwLock<Ctx>>) -> Result<Self, OLRError> {
         debug!("Initialize BuilderQueue");

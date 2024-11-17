@@ -3,15 +3,20 @@ use std::fmt::Display;
 use std::fs::Metadata;
 use std::io::{self, BufReader, Seek};
 use std::num::NonZeroU32;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use std::{fs::File, io::Read, path::PathBuf};
 
+use crossbeam::channel;
 use clap::error::Result;
 use log::{debug, info, warn};
 
 use crate::common::constants;
+use crate::common::thread::spawn;
 use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
+use crate::ctx::Ctx;
 use crate::olr_perr;
+use crate::parser::fs_reader::{Reader, ReaderMessage};
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
 use crate::common::errors::OLRErrorCode::*;
 
@@ -98,8 +103,9 @@ pub struct RedoRecordHeader {
     pub expansion : Option<RedoRecordHeaderExpansion>,
 }
 
-#[derive(Debug, Eq, Default)]
+#[derive(Debug)]
 pub struct Parser {
+    context_ptr : Arc<RwLock<Ctx>>,
     file_path : PathBuf,
     sequence : TypeSeq,
 
@@ -112,6 +118,8 @@ impl PartialEq for Parser {
         self.sequence.eq(&other.sequence)
     }
 }
+
+impl Eq for Parser {}
 
 impl PartialOrd for Parser {
     fn lt(&self, other: &Self) -> bool {
@@ -130,8 +138,8 @@ impl Ord for Parser {
 }
 
 impl Parser {
-    pub fn new(file_path : PathBuf, sequence : TypeSeq) -> Self {
-        Self { file_path, sequence, .. Default::default() }
+    pub fn new(context : Arc<RwLock<Ctx>> , file_path : PathBuf, sequence : TypeSeq) -> Self {
+        Self {context_ptr: context, file_path, sequence, block_size : None, endian : None }
     }
 
     pub fn sequence(&self) -> TypeSeq {
@@ -141,7 +149,23 @@ impl Parser {
     pub fn parse(&mut self) -> Result<(), OLRError> {
 
         let start_parsing_time = Instant::now();
-        
+
+        let (sx, rx) = crossbeam::channel::unbounded::<ReaderMessage>();
+        let fs_reader = Reader::new(self.context_ptr.clone(), self.file_path.clone(), sx);
+
+        let fs_reader_handle = spawn(fs_reader)?;
+
+        loop {
+            let message = rx.recv().unwrap();
+
+            match message {
+                ReaderMessage::Read(arc, size) => {
+                    debug!("Recive size : {}", size);
+                },
+                ReaderMessage::Eof => break
+            }
+        }
+
         let archive_log_file = File::open(&self.file_path)
                 .or(olr_err!(FileReading, "Can not open archive file"))?;
 
@@ -243,6 +267,8 @@ impl Parser {
             let size = reader.read_u32().unwrap();
             assert!(size == record.len() as u32, "{} {}", size, record.len() as u32);
         }
+
+        fs_reader_handle.join().unwrap()?;
 
         Ok(())
     }

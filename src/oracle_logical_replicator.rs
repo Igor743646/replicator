@@ -498,7 +498,7 @@ impl OracleLogicalReplicator {
                         let arch_get_log = match arch.as_str() {
                             "path" => {
                                 let mapping_fn = self.mapping_configuration(reader_json)?;
-                                Box::new(ArchiveDiggerOffline::new(log_archive_format, "".into(), "".into(), Some(start_sequence), mapping_fn))
+                                Box::new(ArchiveDiggerOffline::new(context_ptr.clone(), log_archive_format, "".into(), "".into(), Some(start_sequence), mapping_fn))
                             },
                             "online" => std::unimplemented!(),
                             _ => return olr_err!(NotValidField, "Field 'arch' ({}) expected: one of {{path, online}}", arch)
@@ -507,7 +507,7 @@ impl OracleLogicalReplicator {
                         arch_get_log
                     } else {
                         let mapping_fn = self.mapping_configuration(reader_json)?;
-                        Box::new(ArchiveDiggerOffline::new(log_archive_format, "".into(), "".into(), Some(start_sequence), mapping_fn))
+                        Box::new(ArchiveDiggerOffline::new(context_ptr.clone(),log_archive_format, "".into(), "".into(), Some(start_sequence), mapping_fn))
                     };
                     
                     let replicator = OnlineReplicator::new(context_ptr.clone(), builder_ptr.clone(), metadata_ptr.clone(), archive_digger,
@@ -555,7 +555,7 @@ impl OracleLogicalReplicator {
                 }
             }
 
-            handle_vector.push(spawn(Box::new(replicator))?);
+            handle_vector.push(spawn(replicator)?);
         }
 
         info!("Start Replication!");
