@@ -1,4 +1,4 @@
-use std::{fs::File, io::{Read, Seek}, path::PathBuf, sync::{Arc, RwLock}, time};
+use std::{fs::{File, Metadata}, io::{Read, Seek}, path::PathBuf, sync::{Arc, RwLock}, time};
 
 use crossbeam::channel::Sender;
 use log::{debug, info, warn};
@@ -6,9 +6,11 @@ use log::{debug, info, warn};
 use crate::{common::{errors::OLRError, memory_pool::MemoryChunk, thread::Thread}, ctx::Ctx, olr_err, olr_perr};
 use crate::common::OLRErrorCode::*;
 
-use super::byte_reader::ByteReader;
+use super::byte_reader::{ByteReader, Endian};
 
+#[derive(Debug)]
 pub enum ReaderMessage {
+    Start(usize, Metadata, Endian),
     Read(MemoryChunk, usize),
     Eof,
 }
@@ -78,13 +80,19 @@ impl Reader {
                 size = (size / block_size) * block_size;
             }
 
+            if size == 0 {
+                warn!("Very small read size");
+                self.free_chunk(chunk);
+                continue;
+            }
+
             self.sender.send(ReaderMessage::Read(chunk, size)).unwrap();
             read_size += size;
         }
         Ok(read_size)
     }
 
-    fn get_block_size(&self, archive_log_file : &mut File) -> Result<usize, OLRError> {
+    fn get_file_data(&self, archive_log_file : &mut File) -> Result<(usize, Endian), OLRError> {
         let mut buf = [0u8; 512];
 
         let result = archive_log_file.read_exact(&mut buf);
@@ -107,7 +115,12 @@ impl Reader {
         reader.reset_cursor();
         reader.skip_bytes(20);
         let block_size = reader.read_u32().unwrap();
-        Ok(block_size as usize)
+        
+        if block_size == 0 {
+            return olr_err!(FileReading, "Block size is zero");
+        }
+
+        Ok((block_size as usize, reader.endian()))
     }
 }
 
@@ -124,31 +137,51 @@ impl Thread for Reader {
         let mut block_size: Option<usize> = None;
 
         loop {
+            if last_retry == 0 {
+                return olr_err!(FileReading, "Can not read archive file {} times. Shutdown...", retry);
+            }
 
             info!("Open file: {:?}", self.file_path);
             let archive_log_file = File::open(&self.file_path);
 
             if let Err(err) = archive_log_file {
-                if last_retry == 0 {
-                    return olr_err!(FileReading, "Can not open archive file {} times. Err: {}. Shutdown...", retry, err);
-                }
                 last_retry -= 1;
-                warn!("Can not open archive file: {:?}. Sleep and retry...", self.file_path);
+                warn!("Can not open archive file: {:?}. Err: {}. Sleep and retry...", self.file_path, err);
                 std::thread::sleep(time::Duration::from_millis(100));
                 continue;
             }
             let mut archive_log_file = archive_log_file.unwrap();
 
-            if block_size.is_none() {
-                let result = self.get_block_size(&mut archive_log_file);
+            if block_size.is_none() { // for the first loop cycle
+                info!("Get block size, metadata and endian");
+                let metadata = archive_log_file.metadata();
 
-                if let Err(err) = result {
+                if let Err(err) = metadata {
                     last_retry -= 1;
-                    warn!("Can not read block size from file header. Err: {}", err);
+                    warn!("Can not get metadata for checking file size. Err: {}. Retry...", err);
                     std::thread::sleep(time::Duration::from_millis(50));
                     continue;
                 }
-                block_size = result.ok();
+                let metadata = metadata.unwrap();
+
+                if metadata.len() % 512 != 0 {
+                    last_retry -= 1;
+                    warn!("The file size is not a multiple of 512. File size: {}", metadata.len());
+                    std::thread::sleep(time::Duration::from_millis(50));
+                    continue;
+                }
+                
+                let result = self.get_file_data(&mut archive_log_file);
+
+                if let Err(err) = result {
+                    last_retry -= 1;
+                    warn!("Can not read block size from file header. Err: {}. Retry...", err);
+                    std::thread::sleep(time::Duration::from_millis(50));
+                    continue;
+                }
+                let result = result.unwrap();
+                block_size = Some(result.0);
+                self.sender.send(ReaderMessage::Start(result.0, metadata, result.1)).unwrap();
             }
             
             let seek_result = archive_log_file.seek(std::io::SeekFrom::Start(confirmed_size));
