@@ -1,3 +1,4 @@
+use core::time;
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fs::Metadata;
@@ -150,7 +151,7 @@ impl Parser {
 
         let start_parsing_time = Instant::now();
 
-        let (sx, rx) = crossbeam::channel::unbounded::<ReaderMessage>();
+        let (sx, rx) = crossbeam::channel::bounded::<ReaderMessage>(16);
         let fs_reader = Reader::new(self.context_ptr.clone(), self.file_path.clone(), sx);
 
         let fs_reader_handle = spawn(fs_reader)?;
@@ -161,10 +162,17 @@ impl Parser {
             match message {
                 ReaderMessage::Read(arc, size) => {
                     debug!("Recive size : {}", size);
+                    // std::thread::sleep(time::Duration::from_millis(10));
+                    {
+                        let mut context = self.context_ptr.write().unwrap();
+                        context.free_chunk(arc);
+                    }
                 },
                 ReaderMessage::Eof => break
             }
         }
+        info!("Time elapsed: {:?}", start_parsing_time.elapsed());
+        return Ok(());
 
         let archive_log_file = File::open(&self.file_path)
                 .or(olr_err!(FileReading, "Can not open archive file"))?;
