@@ -1,16 +1,14 @@
-use core::time;
+
 use std::collections::VecDeque;
 use std::fmt::Display;
-use std::fs::Metadata;
-use std::io::{self, BufReader, Seek};
-use std::num::{NonZero, NonZeroU32};
+use std::fs::{Metadata, OpenOptions};
+use std::io::Write;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use std::{fs::File, io::Read, path::PathBuf};
+use std::path::PathBuf;
 
-use crossbeam::channel;
 use clap::error::Result;
-use log::{debug, info, warn};
+use log::info;
 
 use crate::common::constants;
 use crate::common::thread::spawn;
@@ -160,19 +158,18 @@ impl Parser {
 
         match message {
             ReaderMessage::Start(block_size, metadata, endian) => {
-                self.block_size = Some(block_size);
+                self.block_size = block_size.into();
                 self.endian = endian.into();
                 self.metadata = metadata.into();
             },
             data => return olr_err!(ChannelSend, "Wrong data in first message: {:?}", data),
         }
 
-
         let mut records : VecDeque<Vec<u8>> = VecDeque::with_capacity(100);
-        let mut to_read: usize = 0;
-        let mut start_block: usize = 0;
-        let mut end_block: usize = 0;
-        let mut redo_log_header: RedoLogHeader = Default::default();
+        let mut to_read : usize = 0;
+        let mut start_block : usize = 0;
+        let mut end_block : usize = 0;
+        let mut redo_log_header : RedoLogHeader = Default::default();
 
         loop {
             let message = rx.recv().unwrap();
@@ -263,6 +260,19 @@ impl Parser {
                 }
 
                 if start_block + 1 == end_block {
+                    // Process data here
+                    let mut dump_file = OpenOptions::new()
+                            .write(true)
+                            .append(true)
+                            .open(format!("dump-{}.txt", self.sequence)).unwrap();
+                    for record in records.iter() {
+                        let mut reader = ByteReader::from_bytes(record);
+                        reader.set_endian(self.endian.unwrap());
+                        let size = reader.read_u32().unwrap();
+                        assert!(size == record.len() as u32, "{} {}", size, record.len() as u32);
+                        dump_file.write_all(reader.to_colorless_hex_dump().as_bytes()).unwrap();
+                        dump_file.write(b"\n\n").unwrap();
+                    }
                     records.clear();
                 }
                 start_block += 1;
@@ -274,12 +284,7 @@ impl Parser {
             }
         }
 
-        for record in records.iter() {
-            let mut reader = ByteReader::from_bytes(record);
-            reader.set_endian(self.endian.unwrap());
-            let size = reader.read_u32().unwrap();
-            assert!(size == record.len() as u32, "{} {}", size, record.len() as u32);
-        }
+        assert!(records.is_empty());
 
         info!("Time elapsed: {:?}", start_parsing_time.elapsed());
         fs_reader_handle.join().unwrap()?;

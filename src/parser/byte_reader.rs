@@ -346,6 +346,23 @@ impl<'a> ByteReader<'a> {
         Ok(result)
     }
 
+    pub fn to_colorless_hex_dump(&self) -> String {
+        let str = "\n                  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F".to_string();
+        let a : String = self.data
+            .iter()
+            .enumerate()
+            .map(|(idx, char)| -> String {
+                match (idx % 32, idx % 8) {
+                    (_, 7) => format!("{:02X}  ", char),
+                    (0, _) => format!("\n{:016X}: {:02X} ", idx / 32, char),
+                    _ => format!("{:02X} ", char),
+                }
+            })
+            .collect();
+
+        str + a.as_str()
+    }
+
     pub fn to_hex_dump(&self) -> String {
         let str = "\n                  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F".to_string();
         let a : String = self.data

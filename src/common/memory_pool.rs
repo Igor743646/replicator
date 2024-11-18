@@ -1,4 +1,4 @@
-use std::{alloc::{alloc_zeroed, dealloc, handle_alloc_error, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
+use std::{alloc::{alloc_zeroed, dealloc, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
 use log::{debug, trace, warn};
 use crate::common::OLRErrorCode::*;
 use crate::olr_err;

@@ -1,14 +1,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::mpsc;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::RwLock;
-use log::error;
 use log::trace;
 use log::info;
-use log::warn;
 
 use crate::builder;
 use crate::common::constants;

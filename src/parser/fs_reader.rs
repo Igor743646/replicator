@@ -1,7 +1,7 @@
 use std::{fs::{File, Metadata}, io::{Read, Seek}, path::PathBuf, sync::{Arc, RwLock}, time};
 
 use crossbeam::channel::Sender;
-use log::{debug, info, warn};
+use log::{debug, info, trace, warn};
 
 use crate::{common::{errors::OLRError, memory_pool::MemoryChunk, thread::Thread}, ctx::Ctx, olr_err, olr_perr};
 use crate::common::OLRErrorCode::*;
@@ -53,14 +53,14 @@ impl Reader {
                 result.unwrap()
             };
 
-            let r = archive_log_file.read(chunk.as_mut());
+            let result = archive_log_file.read(chunk.as_mut());
 
-            if let Err(err) = r {
+            if let Err(err) = result {
                 self.free_chunk(chunk);
-                return Err((read_size, olr_err!(FileReading, "Can not read file: {}", err.to_string())));
+                return Err((read_size, olr_err!(FileReading, "Can not read archive log file. Err: {}", err)));
             }
-            let mut size = r.unwrap();
-            debug!("read {} bytes", size);
+            let mut size = result.unwrap();
+            trace!("read {} bytes", size);
 
             if size == 0 {
                 self.free_chunk(chunk);
@@ -74,14 +74,14 @@ impl Reader {
 
                 if let Err(err) = result {
                     self.free_chunk(chunk);
-                    return Err((read_size, olr_err!(FileReading, "Can not seek file: {}", err.to_string())));
+                    return Err((read_size, olr_err!(FileReading, "Can not seek file: {}", err)));
                 }
 
                 size = (size / block_size) * block_size;
             }
 
             if size == 0 {
-                warn!("Very small read size");
+                warn!("Very small read data.");
                 self.free_chunk(chunk);
                 continue;
             }
@@ -98,16 +98,16 @@ impl Reader {
         let result = archive_log_file.read_exact(&mut buf);
 
         if let Err(err) = result {
-            return olr_err!(FileReading, "Can not read file header. Err: {}", err);
+            return olr_err!(FileReading, "Could not read file header. Err: {}", err);
         }
 
-        let mut reader = ByteReader::from_bytes(&mut buf);
-        reader.set_endian(super::byte_reader::Endian::LittleEndian);
+        let mut reader = ByteReader::from_bytes(&buf);
+        reader.set_endian(Endian::LittleEndian);
         reader.skip_bytes(28);
         let magic_number = reader.read_u32().unwrap();
         match magic_number {
             0x7A7B7C7D => {},
-            0x7D7C7B7A => { reader.set_endian(super::byte_reader::Endian::BigEndian); },
+            0x7D7C7B7A => { reader.set_endian(Endian::BigEndian); },
             _ => {
                 return olr_perr!("Unknown magic number in file header. {}", reader.to_error_hex_dump(28, 4));
             },
@@ -131,22 +131,22 @@ impl Thread for Reader {
 
     fn run(&self) -> Result<(), OLRError> {
 
-        let mut confirmed_size = 0u64;
-        let retry = 5;
-        let mut last_retry = 5;
+        let mut confirmed_size: usize = 0;
+        let retry: i32 = 5;
+        let mut last_retry: i32 = retry;
         let mut block_size: Option<usize> = None;
 
         loop {
-            if last_retry == 0 {
-                return olr_err!(FileReading, "Can not read archive file {} times. Shutdown...", retry);
+            if last_retry <= 0 {
+                return olr_err!(FileReading, "Couldn't read archive log file {} times. Shutdown...", retry);
             }
 
-            info!("Open file: {:?}", self.file_path);
+            info!("Openning archive log file: {:?}", self.file_path);
             let archive_log_file = File::open(&self.file_path);
 
             if let Err(err) = archive_log_file {
                 last_retry -= 1;
-                warn!("Can not open archive file: {:?}. Err: {}. Sleep and retry...", self.file_path, err);
+                warn!("Could not open archive log file: {:?}. Err: {}. Sleep and retry...", self.file_path, err);
                 std::thread::sleep(time::Duration::from_millis(100));
                 continue;
             }
@@ -158,7 +158,7 @@ impl Thread for Reader {
 
                 if let Err(err) = metadata {
                     last_retry -= 1;
-                    warn!("Can not get metadata for checking file size. Err: {}. Retry...", err);
+                    warn!("Could not get metadata for checking file size. Err: {}. Retry...", err);
                     std::thread::sleep(time::Duration::from_millis(50));
                     continue;
                 }
@@ -175,7 +175,7 @@ impl Thread for Reader {
 
                 if let Err(err) = result {
                     last_retry -= 1;
-                    warn!("Can not read block size from file header. Err: {}. Retry...", err);
+                    warn!("Could not read block size from file header. Err: {}. Retry...", err);
                     std::thread::sleep(time::Duration::from_millis(50));
                     continue;
                 }
@@ -184,7 +184,7 @@ impl Thread for Reader {
                 self.sender.send(ReaderMessage::Start(result.0, metadata, result.1)).unwrap();
             }
             
-            let seek_result = archive_log_file.seek(std::io::SeekFrom::Start(confirmed_size));
+            let seek_result = archive_log_file.seek(std::io::SeekFrom::Start(confirmed_size as u64));
             
             if let Err(err) = seek_result {
                 warn!("Seek failed. Err: {}. Try reopen file...", err);
@@ -195,14 +195,14 @@ impl Thread for Reader {
             let result = self.read_partial(&mut archive_log_file, block_size.unwrap());
             
             if let Err((size, err)) = result {
-                warn!("Error while reading file. Err: {}. Read: {}", err, size);
-                confirmed_size += size as u64;
+                warn!("Error while reading file. Err: {}. Read size: {}", err, size);
+                confirmed_size += size;
                 continue;
             }
             debug!("Confirm: {}", confirmed_size);
 
-            confirmed_size += result.unwrap() as u64;
-            assert!(confirmed_size == archive_log_file.metadata().unwrap().len());
+            confirmed_size += result.unwrap();
+            assert!(confirmed_size == archive_log_file.metadata().unwrap().len() as usize);
             break;
         }
 

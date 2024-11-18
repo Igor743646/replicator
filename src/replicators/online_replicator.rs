@@ -1,9 +1,7 @@
-use std::{cmp::Reverse, sync::{mpsc::Sender, Arc, RwLock}, thread::sleep, time};
-use clap::error;
-use log::{debug, info, warn};
+use std::{cmp::Reverse, sync::{Arc, RwLock}};
+use log::{debug, warn};
 
-use crate::{builder::JsonBuilder, common::{self, errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err, replicators::archive_digger};
-use common::OLRErrorCode::*;
+use crate::{builder::JsonBuilder, common::{errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata};
 
 use super::archive_digger::ArchiveDigger;
 

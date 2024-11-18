@@ -1,6 +1,5 @@
-use core::fmt;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, VecDeque};
+use std::collections::BinaryHeap;
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
