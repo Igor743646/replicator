@@ -1,4 +1,4 @@
-use std::io::{Error, ErrorKind, Result, Write};
+use std::{fmt::Write, io::{Error, ErrorKind, Result}};
 
 use crate::common::{constants::REDO_VERSION_12_1, types::{TypeRBA, TypeScn, TypeTimestamp}};
 
@@ -366,22 +366,40 @@ impl<'a> ByteReader<'a> {
     pub fn to_hex_dump(&self) -> String {
         let str = "\n                  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F".to_string();
         let a : String = self.data
-            .iter()
-            .enumerate()
-            .map(|(idx, char)| -> String {
-                let color = match (idx, char) {
-                    (idx, _) if idx == self.cursor => "\x1b[4;96m",
-                    (_, 0) => "\x1b[2;90m",
-                    _ => "",
-                };
-                match (idx % 32, idx % 8) {
-                    (_, 7) => format!("{}{:02X}\x1b[0m  ", color, char),
-                    (0, _) => format!("\n{:016X}: {}{:02X}\x1b[0m ", idx / 32, color, char),
-                    _ => format!("{}{:02X}\x1b[0m ", color, char),
-                }
-            })
-            .collect();
+                .chunks(32)
+                .enumerate()
+                .map(|(row_id, bytes)| -> String {
+                    let mut row = String::with_capacity(150);
+                    row.write_fmt(format_args!("\n{:016X}: ", row_id * 32)).unwrap();
 
+                    for (col_id, byte) in bytes.iter().enumerate() {
+                        let color = match (col_id + 32 * row_id, byte) {
+                            (idx, _) if idx == self.cursor => "\x1b[4;96m",
+                            (_, 0) => "\x1b[2;90m",
+                            _ => "",
+                        };
+
+                        match col_id % 8 {
+                            7 => row.write_fmt(format_args!("{}{:02X}\x1b[0m  ", color, byte)).unwrap(),
+                            _ => row.write_fmt(format_args!("{}{:02X}\x1b[0m ", color, byte)).unwrap(),
+                        }
+                    }
+
+                    if bytes.len() < 32 {
+                        row.write_str(format!("{:1$}   ", ' ', 3 * (32-bytes.len())).as_str()).unwrap();
+                    }
+
+                    for byte in bytes {
+                        match char::from_u32(*byte as u32) {
+                            Some(chr) if chr.is_ascii_alphanumeric() => row.write_char(chr).unwrap(),
+                            Some(_) => row.write_char('.').unwrap(),
+                            _ => row.write_char('.').unwrap(),
+                        }
+                    }
+
+                    row
+                })
+                .collect();
         str + a.as_str()
     }
 
@@ -414,10 +432,20 @@ impl<'a> ByteReader<'a> {
         str + a.as_str()
     }
 
-    pub fn read_bytes_into(&mut self, size : usize, buffer : &mut impl Write) -> Result<()> {
+    pub fn read_bytes_into(&mut self, size : usize, buffer : &mut [u8]) -> Result<()> {
         self.validate_size(size)?;
+        
+        if buffer.len() < size {
+            return Err(Error::new(
+                ErrorKind::UnexpectedEof,
+                "could not write in buffer with not enough capacity",
+            ));
+        }
+
         let range = self.cursor .. self.cursor + size;
-        buffer.write(&self.data[range])?;
+        for (idx, byte) in (0..size).zip(self.data[range].into_iter()) {
+            buffer[idx] = *byte;
+        }
         self.skip_bytes(size);
         Ok(())
     }

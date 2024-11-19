@@ -1,8 +1,5 @@
-
-use std::collections::VecDeque;
 use std::fmt::Display;
-use std::fs::{Metadata, OpenOptions};
-use std::io::Write;
+use std::fs::Metadata;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use std::path::PathBuf;
@@ -16,10 +13,13 @@ use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
 use crate::ctx::Ctx;
 use crate::olr_perr;
 use crate::parser::fs_reader::{Reader, ReaderMessage};
+use crate::parser::record_analizer::RecordAnalizer;
+use crate::parser::records_manager::Record;
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
 use crate::common::errors::OLRErrorCode::*;
 
-use super::byte_reader::{self, ByteReader, Endian::*};
+use super::byte_reader::{self, ByteReader};
+use super::records_manager::RecordsManager;
 
 #[derive(Debug, Default)]
 pub struct BlockHeader {
@@ -111,6 +111,8 @@ pub struct Parser {
     block_size : Option<usize>,
     endian     : Option<byte_reader::Endian>,
     metadata   : Option<Metadata>,
+
+    records_manager : RecordsManager,
 }
 
 impl PartialEq for Parser {
@@ -139,7 +141,15 @@ impl Ord for Parser {
 
 impl Parser {
     pub fn new(context : Arc<RwLock<Ctx>> , file_path : PathBuf, sequence : TypeSeq) -> Self {
-        Self {context_ptr: context, file_path, sequence, block_size : None, endian : None, metadata : None }
+        Self {
+            context_ptr: context.clone(), 
+            file_path, 
+            sequence, 
+            block_size : None, 
+            endian : None, 
+            metadata : None, 
+            records_manager : RecordsManager::new(context),
+        }
     }
 
     pub fn sequence(&self) -> TypeSeq {
@@ -165,11 +175,12 @@ impl Parser {
             data => return olr_err!(ChannelSend, "Wrong data in first message: {:?}", data),
         }
 
-        let mut records : VecDeque<Vec<u8>> = VecDeque::with_capacity(100);
         let mut to_read : usize = 0;
         let mut start_block : usize = 0;
         let mut end_block : usize = 0;
         let mut redo_log_header : RedoLogHeader = Default::default();
+        let mut record_position = 0;
+        let mut record : Option<&mut Record> = None;
 
         loop {
             let message = rx.recv().unwrap();
@@ -184,7 +195,9 @@ impl Parser {
             };
 
             for idx in 0 .. blocks_count {
-                let phisical_block = &chunk[idx * self.block_size.unwrap() .. (idx + 1) * self.block_size.unwrap()];
+                let range = idx * self.block_size.unwrap() .. (idx + 1) * self.block_size.unwrap();
+                let phisical_block = &chunk[range];
+
                 if start_block == 0 {
                     self.check_file_header(&phisical_block)?;
                     start_block += 1;
@@ -234,46 +247,42 @@ impl Parser {
                         }
 
                         to_read = redo_record_header.record_size as usize;
-                        let mut record = Vec::with_capacity(to_read);
-                        unsafe { record.set_len(to_read); }
-                        record.resize(to_read, Default::default());
-                        records.push_back(record);
+                        record_position = 0;
+
+                        record = Some(self.records_manager.reserve_record(to_read)?);
+                        record.as_mut().unwrap().scn = redo_record_header.scn;
+                        record.as_mut().unwrap().sub_scn = redo_record_header.sub_scn;
+                        record.as_mut().unwrap().block = start_block as u32;
+                        record.as_mut().unwrap().offset = prev_offset as u16;
+                        record.as_mut().unwrap().size = redo_record_header.record_size;
+                        
                         reader.reset_cursor();
                         reader.skip_bytes(prev_offset);
                     }
 
-                    let to_copy = to_read.min(self.block_size.unwrap() - reader.cursor());
-                    let record = records.back_mut();
-                    
-                    if record.is_none() {
-                        return olr_perr!("Records are empty, but must be not empty. {}", reader.to_error_hex_dump(reader.cursor(), to_copy));
-                    };
-                    let record = record.unwrap();
-                    let already_read = record.len() - to_read;
-                    let mut record = &mut record.as_mut_slice()[already_read..];
+                    let to_copy = std::cmp::min(to_read, self.block_size.unwrap() - reader.cursor());
 
-                    if let Err(err) = reader.read_bytes_into(to_copy, &mut record) {
-                        return olr_perr!("Can not write enough bytes to record: {} Reserved: {} Copy: {}. {}", record.len(), to_copy, err, reader.to_error_hex_dump(reader.cursor(), to_copy));
-                    }
+                    let buffer = &mut record.as_mut().unwrap().data()[record_position .. record_position + to_copy];
+
+                    assert!(buffer.len() == to_copy);
+                    reader.read_bytes_into(to_copy, buffer).unwrap();
                     
                     to_read -= to_copy;
+                    record_position += to_copy;
                 }
 
                 if start_block + 1 == end_block {
                     // Process data here
-                    let mut dump_file = OpenOptions::new()
-                            .write(true)
-                            .append(true)
-                            .open(format!("dump-{}.txt", self.sequence)).unwrap();
-                    for record in records.iter() {
-                        let mut reader = ByteReader::from_bytes(record);
-                        reader.set_endian(self.endian.unwrap());
-                        let size = reader.read_u32().unwrap();
-                        assert!(size == record.len() as u32, "{} {}", size, record.len() as u32);
-                        dump_file.write_all(reader.to_colorless_hex_dump().as_bytes()).unwrap();
-                        dump_file.write(b"\n\n").unwrap();
+
+                    while self.records_manager.records_count() > 0 {
+                        let record = self.records_manager.drop_record();
+
+                        if record.is_none() {
+                            return olr_perr!("No record, but expected");
+                        }
+
+                        self.analize_record(record.unwrap())?;
                     }
-                    records.clear();
                 }
                 start_block += 1;
             }
@@ -284,39 +293,25 @@ impl Parser {
             }
         }
 
-        assert!(records.is_empty());
+        assert!(self.records_manager.records_count() == 0);
 
         info!("Time elapsed: {:?}", start_parsing_time.elapsed());
         fs_reader_handle.join().unwrap()?;
         Ok(())
     }
 
-    fn check_file_header(&mut self, buffer : &[u8]) -> Result<(), OLRError> {
+    fn check_file_header(&self, buffer : &[u8]) -> Result<(), OLRError> {
         let mut reader = ByteReader::from_bytes(&buffer);
 
-        if let Some(endian) = self.endian {
-            reader.set_endian(endian);
-        } else {
-            self.endian = Some(LittleEndian);
-            reader.set_endian(LittleEndian);
-            reader.skip_bytes(28);
-            let magic_number = reader.read_u32().unwrap();
-            match magic_number {
-                0x7A7B7C7D => {},
-                0x7D7C7B7A => { self.endian = Some(BigEndian); },
-                _ => {
-                    return olr_perr!("Unknown magic number in file header. {}", reader.to_error_hex_dump(28, 4));
-                },
-            }
-            reader.reset_cursor();
-        }
+        assert!(self.block_size.is_some());
+        assert!(self.endian.is_some());
 
         let block_flag = reader.read_u8().unwrap();
         let file_type = reader.read_u8().unwrap();
         reader.skip_bytes(18);
         let block_size = reader.read_u32().unwrap();
         let number_of_blocks = reader.read_u32().unwrap();
-        let _magic_number = reader.read_u32().unwrap();
+        let magic_number = reader.read_u32().unwrap();
 
         if block_flag != 0 {
             return olr_perr!("Invalid block flag: {}, expected 0x00. {}", block_flag, reader.to_error_hex_dump(0, 1));
@@ -324,12 +319,14 @@ impl Parser {
 
         match (file_type, block_size) {
             (0x22, 512) | (0x22, 1024) | (0x82, 4096) => {
-                self.block_size = Some(block_size as usize);
+                assert_eq!(self.block_size.unwrap(), block_size as usize);
             },
             _ => {
                 return olr_perr!("Invalid block size: {}, expected one of {{512, 1024, 4096}}. {}", block_size, reader.to_error_hex_dump(20, 4));
             }
         }
+
+        assert_eq!(magic_number, 0x7A7B7C7D);
 
         let metadata = self.metadata.as_ref().unwrap();
         if metadata.len() != ((number_of_blocks + 1) * block_size) as u64 {

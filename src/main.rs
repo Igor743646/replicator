@@ -48,7 +48,7 @@ fn init_logger() {
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(buf,
-                "{} {:>16} {:>40} ({:>4}) - {}",
+                "{} {:>16} {:>40}:{:<4} - {}",
                 chrono::Local::now().format("\x1b[92m%Y-%m-%d \x1b[93m%H:%M:%S \x1b[0m"),
                 match record.level() {
                     log::Level::Error => "[\x1b[91mERROR\x1b[0m]",
@@ -62,7 +62,7 @@ fn init_logger() {
                 record.args(),
             )
         })
-        .filter(None, log::LevelFilter::Trace)
+        .filter(None, log::LevelFilter::Debug)
         .init();
 }
 

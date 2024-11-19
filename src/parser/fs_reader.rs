@@ -206,6 +206,10 @@ impl Thread for Reader {
             break;
         }
 
+        while !self.sender.is_empty() {
+            std::thread::sleep(time::Duration::from_millis(10));
+        }
+
         Ok(())
     }
 }

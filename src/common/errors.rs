@@ -77,10 +77,10 @@ macro_rules! olr_err {
 #[macro_export]
 macro_rules! olr_perr {
     ($message:expr, $($args:tt)*) => {
-        $crate::common::errors::OLRError::new(file!(), line!(), ParseError, format!($message, $($args)*)).into()
+        $crate::common::errors::OLRError::new(file!(), line!(), crate::common::errors::OLRErrorCode::ParseError, format!($message, $($args)*)).into()
     };
 
     ($message:expr) => {
-        $crate::common::errors::OLRError::new(file!(), line!(), ParseError, format!($message)).into()
+        $crate::common::errors::OLRError::new(file!(), line!(), crate::common::errors::OLRErrorCode::ParseError, format!($message)).into()
     };
 }
