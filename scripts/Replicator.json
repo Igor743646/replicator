@@ -36,7 +36,7 @@
               "column": 2
           },
           "memory": {
-              "min-mb": 64,
+              "min-mb": 16,
               "max-mb": 1024
           },
           "filter": {

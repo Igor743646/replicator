@@ -1,5 +1,5 @@
 use std::{alloc::{alloc_zeroed, dealloc, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
-use log::{debug, trace, warn};
+use log::{debug, info, trace, warn};
 use crate::common::OLRErrorCode::*;
 use crate::olr_err;
 use super::{constants, errors::OLRError};

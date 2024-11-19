@@ -283,6 +283,8 @@ impl Parser {
 
                         self.analize_record(record.unwrap())?;
                     }
+
+                    self.records_manager.free_chunks();
                 }
                 start_block += 1;
             }

@@ -117,4 +117,17 @@ impl RecordsManager {
         }
     }
 
+    pub fn free_chunks(&mut self) {
+        self.records.clear();
+        let mut context = self.context_ptr.write().unwrap();
+
+        while self.chunks.len() > 1 {
+            let chunk = self.chunks.pop_front();
+            context.free_chunk(chunk.unwrap());
+        }
+
+        let mut chunk = self.chunks.back_mut().unwrap();
+        ByteWriter::from_bytes(&mut chunk).write_u64(size_of::<u64>() as u64).unwrap()
+    }
+
 }
