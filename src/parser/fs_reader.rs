@@ -60,12 +60,11 @@ impl Reader {
                 return Err((read_size, olr_err!(FileReading, "Can not read archive log file. Err: {}", err)));
             }
             let mut size = result.unwrap();
-            trace!("read {} bytes", size);
-
+            
             if size == 0 {
                 self.free_chunk(chunk);
                 self.sender.send(ReaderMessage::Eof).unwrap();
-                debug!("End read file");
+                debug!("Eof. Stop reading file.");
                 break;
             }
 

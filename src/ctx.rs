@@ -2,7 +2,7 @@ use log::debug;
 
 use crate::common::{errors::OLRError, memory_pool::{MemoryChunk, MemoryPool}};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Dump {
     pub level : u64,
     pub path : String,

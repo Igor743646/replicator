@@ -140,16 +140,10 @@ impl MemoryPool {
         };
 
         let result = self.memory_chunks.pop_front().expect("queue is not empty");
-        trace!("Borrow a chunk. Address: {:?}. Free/Allocated/Max: {}/{}/{}", 
-            result.as_ptr(), self.memory_chunks_free, self.memory_chunks_allocated, self.memory_chunks_max );
-        
         Ok(result)
     }
 
     pub fn free_chunk(&mut self, chunk : MemoryChunk) {
-        trace!("Take back chunk. Address: {:X?}. Free/Allocated/Max: {}/{}/{}", 
-            chunk.as_ptr(), self.memory_chunks_free, self.memory_chunks_allocated, self.memory_chunks_max );
-
         if self.memory_chunks_free >= self.memory_chunks_min || self.memory_chunks_allocated > self.memory_chunks_max {
             let _ = chunk;
             self.memory_chunks_allocated -= 1;

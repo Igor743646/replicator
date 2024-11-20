@@ -10,7 +10,7 @@ use log::info;
 use crate::common::constants;
 use crate::common::thread::spawn;
 use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, Dump};
 use crate::olr_perr;
 use crate::parser::fs_reader::{Reader, ReaderMessage};
 use crate::parser::record_analizer::RecordAnalizer;
@@ -107,6 +107,7 @@ pub struct Parser {
     context_ptr : Arc<RwLock<Ctx>>,
     file_path : PathBuf,
     sequence : TypeSeq,
+    pub dump : Dump,
 
     block_size : Option<usize>,
     endian     : Option<byte_reader::Endian>,
@@ -140,15 +141,20 @@ impl Ord for Parser {
 }
 
 impl Parser {
-    pub fn new(context : Arc<RwLock<Ctx>> , file_path : PathBuf, sequence : TypeSeq) -> Self {
+    pub fn new(context_ptr : Arc<RwLock<Ctx>> , file_path : PathBuf, sequence : TypeSeq) -> Self {
+        let dump = {
+            let context = context_ptr.read().unwrap();
+            context.dump.clone()
+        };
         Self {
-            context_ptr: context.clone(), 
+            context_ptr: context_ptr.clone(), 
             file_path, 
-            sequence, 
+            sequence,
+            dump,
             block_size : None, 
             endian : None, 
             metadata : None, 
-            records_manager : RecordsManager::new(context),
+            records_manager : RecordsManager::new(context_ptr.clone()),
         }
     }
 

@@ -62,7 +62,7 @@ fn init_logger() {
                 record.args(),
             )
         })
-        .filter(None, log::LevelFilter::Debug)
+        .filter(None, log::LevelFilter::Trace)
         .init();
 }
 
