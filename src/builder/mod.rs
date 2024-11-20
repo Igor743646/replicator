@@ -1,5 +1,5 @@
-use std::sync::{Arc, RwLock};
-use log::{debug, info};
+use std::sync::Arc;
+use log::debug;
 
 use formats::BuilderFormats;
 use queue::BuilderQueue;
@@ -11,15 +11,15 @@ pub mod queue;
 
 #[derive(Debug)]
 pub struct JsonBuilder {
-    context_ptr : Arc<RwLock<Ctx>>, 
-    locales_ptr : Arc<RwLock<Locales>>, 
-    metadata_ptr : Arc<RwLock<Metadata>>, 
+    context_ptr : Arc<Ctx>, 
+    locales_ptr : Arc<Locales>, 
+    metadata_ptr : Arc<Metadata>, 
     formats : BuilderFormats,
     queue : BuilderQueue,
 }
 
 impl JsonBuilder {
-    pub fn new(context_ptr : Arc<RwLock<Ctx>>, locales_ptr : Arc<RwLock<Locales>>, metadata_ptr : Arc<RwLock<Metadata>>, 
+    pub fn new(context_ptr : Arc<Ctx>, locales_ptr : Arc<Locales>, metadata_ptr : Arc<Metadata>, 
                 db_format : u8, attributes_format : u8, interval_dts_format : u8, interval_ytm_format : u8, message_format : u8, 
                 rid_format : u8, xid_format : u8, timestamp_format : u8, timestamp_tz_format : u8, timestamp_all : u8, char_format : u8,
                 scn_format : u8, scn_all : u8, unknown_format : u8, schema_format : u8, column_format : u8, unknown_type : u8) -> Result<Self, OLRError> {

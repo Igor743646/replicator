@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, sync::{Arc, RwLock}};
+use std::{cmp::Reverse, sync::Arc};
 use log::{debug, warn};
 
 use crate::{builder::JsonBuilder, common::{errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata};
@@ -7,9 +7,9 @@ use super::archive_digger::ArchiveDigger;
 
 #[derive(Debug)]
 pub struct OnlineReplicator {
-    context_ptr     : Arc<RwLock<Ctx>>, 
-    builder_ptr     : Arc<RwLock<JsonBuilder>>, 
-    metadata_ptr    : Arc<RwLock<Metadata>>,
+    context_ptr     : Arc<Ctx>, 
+    builder_ptr     : Arc<JsonBuilder>, 
+    metadata_ptr    : Arc<Metadata>,
     
     // Thread info
     alias           : String,
@@ -25,7 +25,7 @@ pub struct OnlineReplicator {
 } 
 
 impl OnlineReplicator {
-    pub fn new(context_ptr : Arc<RwLock<Ctx>>, builder_ptr : Arc<RwLock<JsonBuilder>>, metadata_ptr : Arc<RwLock<Metadata>>, archive_digger  : Box<dyn ArchiveDigger>,
+    pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, metadata_ptr : Arc<Metadata>, archive_digger  : Box<dyn ArchiveDigger>,
          alias : String, database_name : String, user : String, password : String, server : String) -> Self {
         debug!("Initialize OnlineReplicator");
         Self {

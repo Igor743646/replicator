@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ptr, sync::{Arc, RwLock}};
+use std::{collections::VecDeque, ptr, sync::Arc};
 
 use crate::{common::{constants, errors::{OLRError, OLRErrorCode::*}, memory_pool::MemoryChunk, types::TypeRecordScn}, ctx::Ctx, olr_err};
 
@@ -24,7 +24,7 @@ impl Record {
 
 #[derive(Debug)]
 pub struct RecordsManager {
-    context_ptr : Arc<RwLock<Ctx>>,
+    context_ptr : Arc<Ctx>,
 
     chunks : VecDeque<MemoryChunk>,
     records : VecDeque<*mut Record>,
@@ -33,25 +33,21 @@ pub struct RecordsManager {
 impl Drop for RecordsManager {
     fn drop(&mut self) {
         self.records.clear();
-        let mut context = self.context_ptr.write().unwrap();
         while let Some(chunk) = self.chunks.pop_front() {
-            context.free_chunk(chunk);
+            self.context_ptr.free_chunk(chunk);
         }
     }
 }
 
 impl RecordsManager {
-    pub fn new(context_ptr : Arc<RwLock<Ctx>>) -> Self {
+    pub fn new(context_ptr : Arc<Ctx>) -> Self {
         let mut res = Self {
             context_ptr,
             chunks : VecDeque::new(),
             records : VecDeque::new(),
         };
 
-        let mut chunk = {
-            let mut context = res.context_ptr.write().unwrap();
-            context.get_chunk().unwrap()
-        };
+        let mut chunk = res.context_ptr.get_chunk().unwrap();
 
         let mut writer = ByteWriter::from_bytes(&mut chunk);
         writer.write_u64(size_of::<u64>() as u64).unwrap();
@@ -66,8 +62,7 @@ impl RecordsManager {
     }
 
     fn allocate_chunk(&mut self) -> Result<(), OLRError> {
-        let mut context = self.context_ptr.write().unwrap();
-        let chunk = context.get_chunk()?;
+        let chunk = self.context_ptr.get_chunk()?;
         self.chunks.push_back(chunk);
         Ok(())
     }
@@ -119,11 +114,10 @@ impl RecordsManager {
 
     pub fn free_chunks(&mut self) {
         self.records.clear();
-        let mut context = self.context_ptr.write().unwrap();
-
+        
         while self.chunks.len() > 1 {
             let chunk = self.chunks.pop_front();
-            context.free_chunk(chunk.unwrap());
+            self.context_ptr.free_chunk(chunk.unwrap());
         }
 
         let mut chunk = self.chunks.back_mut().unwrap();

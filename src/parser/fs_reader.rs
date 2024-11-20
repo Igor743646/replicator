@@ -1,7 +1,7 @@
-use std::{fs::{File, Metadata}, io::{Read, Seek}, path::PathBuf, sync::{Arc, RwLock}, time};
+use std::{fs::{File, Metadata}, io::{Read, Seek}, path::PathBuf, sync::Arc, time};
 
 use crossbeam::channel::Sender;
-use log::{debug, info, trace, warn};
+use log::{debug, info, warn};
 
 use crate::{common::{errors::OLRError, memory_pool::MemoryChunk, thread::Thread}, ctx::Ctx, olr_err, olr_perr};
 use crate::common::OLRErrorCode::*;
@@ -16,13 +16,13 @@ pub enum ReaderMessage {
 }
 
 pub(crate) struct Reader {
-    context_ptr : Arc<RwLock<Ctx>>,
+    context_ptr : Arc<Ctx>,
     file_path : PathBuf,
     sender : Sender<ReaderMessage>,
 }
 
 impl Reader {
-    pub fn new(context_ptr : Arc<RwLock<Ctx>>, file_path : PathBuf, sender : Sender<ReaderMessage>) -> Self {
+    pub fn new(context_ptr : Arc<Ctx>, file_path : PathBuf, sender : Sender<ReaderMessage>) -> Self {
         Self {
             context_ptr,
             file_path,
@@ -31,13 +31,11 @@ impl Reader {
     }
 
     fn get_chunk(&self) -> Result<MemoryChunk, OLRError> {
-        let mut context = self.context_ptr.write().unwrap();
-        context.get_chunk()
+        self.context_ptr.get_chunk()
     }
 
     fn free_chunk(&self, chunk : MemoryChunk) {
-        let mut context = self.context_ptr.write().unwrap();
-        context.free_chunk(chunk)
+        self.context_ptr.free_chunk(chunk)
     }
 
     fn read_partial(&self, archive_log_file : &mut File, block_size : usize) -> Result<usize, (usize, OLRError)> {

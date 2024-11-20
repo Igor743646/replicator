@@ -13,4 +13,4 @@ memory-stats = "1.2.0"
 serde_json = {version="1.0.132"}
 
 [profile.release]
-debug=1
+debug=2

@@ -2,7 +2,7 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::fmt::Debug;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use log::{info, trace, warn};
 
 use crate::common::types::TypeSeq;
@@ -16,7 +16,7 @@ pub trait ArchiveDigger where Self: Send + Sync + Debug {
 }
 
 pub struct ArchiveDiggerOffline {
-    context_ptr : Arc<RwLock<Ctx>>,
+    context_ptr : Arc<Ctx>,
     archive_log_format : String, 
     db_recovery_file_destination : String,
     db_name : String,
@@ -34,7 +34,7 @@ unsafe impl Send for ArchiveDiggerOffline {}
 unsafe impl Sync for ArchiveDiggerOffline {}
 
 impl ArchiveDiggerOffline {
-    pub fn new(context : Arc<RwLock<Ctx>>, archive_log_format : String, db_recovery_file_destination : String,
+    pub fn new(context : Arc<Ctx>, archive_log_format : String, db_recovery_file_destination : String,
         db_name : String, min_sequence : Option<TypeSeq>, mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>) -> Self {
         Self {
             context_ptr: context,
@@ -188,13 +188,13 @@ impl ArchiveDigger for ArchiveDiggerOffline {
 
 #[cfg(test)]
 mod tests {
-    use std::{path::PathBuf, str::FromStr, sync::{Arc, RwLock}};
+    use std::{path::PathBuf, str::FromStr, sync::Arc};
     use crate::{common::errors::OLRError, ctx::{Ctx, Dump}, init_logger};
     use super::{ArchiveDigger, ArchiveDiggerOffline};
 
     fn create_offline_digger(min_seq : u64) -> ArchiveDiggerOffline {
-        let context: Arc<RwLock<crate::ctx::Ctx>> = Arc::new(RwLock::new(Ctx::new(
-            Dump::default(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 1).unwrap()));
+        let context: Arc<crate::ctx::Ctx> = Arc::new(Ctx::new(
+            Dump::default(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 1).unwrap());
         ArchiveDiggerOffline::new(
             context,
             "o1_mf_%t_%s_%h_.arc".to_string(),

@@ -1,16 +1,15 @@
 use std::fmt::Display;
 use std::fs::Metadata;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 use std::path::PathBuf;
 
 use clap::error::Result;
 use log::info;
 
-use crate::common::constants;
 use crate::common::thread::spawn;
 use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
-use crate::ctx::{Ctx, Dump};
+use crate::ctx::Ctx;
 use crate::olr_perr;
 use crate::parser::fs_reader::{Reader, ReaderMessage};
 use crate::parser::record_analizer::RecordAnalizer;
@@ -104,10 +103,9 @@ pub struct RedoRecordHeader {
 
 #[derive(Debug)]
 pub struct Parser {
-    context_ptr : Arc<RwLock<Ctx>>,
+    pub context_ptr : Arc<Ctx>,
     file_path : PathBuf,
     sequence : TypeSeq,
-    pub dump : Dump,
 
     block_size : Option<usize>,
     endian     : Option<byte_reader::Endian>,
@@ -141,16 +139,11 @@ impl Ord for Parser {
 }
 
 impl Parser {
-    pub fn new(context_ptr : Arc<RwLock<Ctx>> , file_path : PathBuf, sequence : TypeSeq) -> Self {
-        let dump = {
-            let context = context_ptr.read().unwrap();
-            context.dump.clone()
-        };
+    pub fn new(context_ptr : Arc<Ctx> , file_path : PathBuf, sequence : TypeSeq) -> Self {
         Self {
             context_ptr: context_ptr.clone(), 
             file_path, 
             sequence,
-            dump,
             block_size : None, 
             endian : None, 
             metadata : None, 
@@ -166,7 +159,7 @@ impl Parser {
 
         let start_parsing_time = Instant::now();
 
-        let (sx, rx) = crossbeam::channel::bounded::<ReaderMessage>(constants::READER_CHANNEL_CAPACITY);
+        let (sx, rx) = self.context_ptr.get_reader_channel();
         let fs_reader = Reader::new(self.context_ptr.clone(), self.file_path.clone(), sx);
         let fs_reader_handle = spawn(fs_reader)?;
 
@@ -296,8 +289,7 @@ impl Parser {
             }
 
             {
-                let mut context = self.context_ptr.write().unwrap();
-                context.free_chunk(chunk);
+                self.context_ptr.free_chunk(chunk);
             }
         }
 

@@ -1,6 +1,9 @@
+use std::sync::Mutex;
+
+use crossbeam::channel::{Receiver, Sender};
 use log::debug;
 
-use crate::common::{errors::OLRError, memory_pool::{MemoryChunk, MemoryPool}};
+use crate::{common::{errors::OLRError, memory_pool::{MemoryChunk, MemoryPool}}, parser::fs_reader::ReaderMessage};
 
 #[derive(Debug, Default, Clone)]
 pub struct Dump {
@@ -25,7 +28,7 @@ pub struct Ctx {
     pub schema_force_interval : u64,
 
     // Memory Management
-    memory_manager : MemoryPool,
+    memory_manager : Mutex<MemoryPool>,
 }
 
 impl Ctx {
@@ -35,18 +38,26 @@ impl Ctx {
         debug!("Initialize Ctx");
         
         Ok(Self {
-            dump, log_level, trace, flags, skip_rollback, disable_checks,
+            dump, log_level : log_level, trace, flags, skip_rollback, disable_checks,
             checkpoint_interval_s, checkpoint_interval_mb, checkpoint_keep,
             schema_force_interval,
-            memory_manager : MemoryPool::new(memory_min_mb, memory_max_mb, read_buffer_max)?
+            memory_manager : MemoryPool::new(memory_min_mb, memory_max_mb, read_buffer_max)?.into()
         })
     }
     
-    pub fn get_chunk(&mut self) -> Result<MemoryChunk, OLRError> {
-        self.memory_manager.get_chunk()
+    pub fn get_chunk(&self) -> Result<MemoryChunk, OLRError> {
+        let mut guard = self.memory_manager.lock().unwrap();
+        guard.get_chunk()
     }
 
-    pub fn free_chunk(&mut self, chunk : MemoryChunk) {
-        self.memory_manager.free_chunk(chunk);
+    pub fn free_chunk(&self, chunk : MemoryChunk) {
+        let mut guard = self.memory_manager.lock().unwrap();
+        guard.free_chunk(chunk);
+    }
+
+    pub fn get_reader_channel(&self) -> (Sender<ReaderMessage>, Receiver<ReaderMessage>)  {
+        let guard = self.memory_manager.lock().unwrap();
+        debug!("RBM: {}", guard.read_buffer_max());
+        crossbeam::channel::bounded::<ReaderMessage>(guard.read_buffer_max() as usize)
     }
 }

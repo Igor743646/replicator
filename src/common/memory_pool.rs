@@ -1,5 +1,5 @@
 use std::{alloc::{alloc_zeroed, dealloc, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
-use log::{debug, info, trace, warn};
+use log::{debug, warn};
 use crate::common::OLRErrorCode::*;
 use crate::olr_err;
 use super::{constants, errors::OLRError};
@@ -122,6 +122,10 @@ impl MemoryPool {
         }
 
         Ok(result)
+    }
+
+    pub fn read_buffer_max(&self) -> u64 {
+        self.read_buffer_max
     }
 
     pub fn get_chunk(&mut self) -> Result<MemoryChunk, OLRError> {

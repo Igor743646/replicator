@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock;
 use log::trace;
 use log::info;
 
@@ -108,7 +107,7 @@ impl OracleLogicalReplicator {
     }
 
     pub fn run(&self) -> Result<(), OLRError> {
-        let locales_ptr = Arc::new(RwLock::new(Locales::new()));
+        let locales_ptr = Arc::new(Locales::new());
         
         let mut handle_vector = Vec::new();
 
@@ -276,17 +275,17 @@ impl OracleLogicalReplicator {
             let container_id : types::TypeConId = self.get_json_field_i64(reader_json, "con-id")?.unwrap_or(-1) as types::TypeConId;
 
             // Context init
-            let context_ptr = Arc::new(RwLock::new(Ctx::new(
+            let context_ptr = Arc::new(Ctx::new(
                 dump, log_level, trace, flags, skip_rollback, disable_checks, 
                 checkpoint_interval_s, checkpoint_interval_mb, checkpoint_keep,
                 schema_force_interval, memory_min_mb, memory_max_mb, read_buffer_max
-            )?));
+            )?);
             
             // Metadata init
-            let metadata_ptr = Arc::new(RwLock::new(
+            let metadata_ptr = Arc::new(
                 metadata::Metadata::new(context_ptr.clone(), locales_ptr.clone(), 
                                         source_name.clone(), container_id, start_scn,
-                                        start_sequence, start_time, start_time_rel))
+                                        start_sequence, start_time, start_time_rel)
             );
 
             // Format
@@ -372,9 +371,9 @@ impl OracleLogicalReplicator {
                 return olr_err!(NotValidField, "Field 'unknown-type' ({}) expected: one of {{0, 1}}", unknown_type)
             }
             
-            let builder_ptr = Arc::new(RwLock::new(builder::JsonBuilder::new(context_ptr.clone(), locales_ptr.clone(), metadata_ptr.clone(), db_format, attributes_format,
+            let builder_ptr = Arc::new(builder::JsonBuilder::new(context_ptr.clone(), locales_ptr.clone(), metadata_ptr.clone(), db_format, attributes_format,
                 interval_dts_format, interval_ytm_format, message_format, rid_format, xid_format, timestamp_format, timestamp_tz_format, 
-                timestamp_all, char_format, scn_format, scn_all, unknown_format, schema_format, column_format, unknown_type)?));
+                timestamp_all, char_format, scn_format, scn_all, unknown_format, schema_format, column_format, unknown_type)?);
 
             let reader_type = self.get_json_field_s(&reader_json, "type")?.expect("Field 'type' must be defined");
             let log_archive_format = self.get_json_field_s(reader_json, "log-archive-format")?.unwrap_or("o1_mf_%t_%s_%h_.arc".into());
@@ -413,15 +412,14 @@ impl OracleLogicalReplicator {
 
                 if let Some(table_array_json) = self.get_json_field_a(&filter_json, "table")? {
                     
-                    let mut metadata = metadata_ptr.write().unwrap();
-                    
                     for table_element_json in table_array_json {
                         self.check_config_fields(table_element_json, ["owner", "table", "key", "condition"])?;
 
                         let owner = self.get_json_field_s(&table_element_json, "owner")?.expect("Field 'owner' must be defined");
                         let table = self.get_json_field_s(&table_element_json, "table")?.expect("Field 'table' must be defined");
-                        metadata.add_user(owner.clone());
-                        let element = metadata.add_object(owner, table, 0);
+                        metadata_ptr.add_user(owner.clone());
+                        let mut guard = metadata_ptr.add_object(owner, table, 0);
+                        let element = guard.last_mut().unwrap();
 
                         if let Some(keys_string) = self.get_json_field_s(&table_element_json, "key")? {
                             let columns : Vec<&str> = keys_string.split(',')
