@@ -81,47 +81,46 @@ impl UpperHex for MemoryChunk {
     }
 }
 
+#[derive(Debug, Default)]
+struct MemoryPoolStat {
+    pub allocated_max_mb : u64,
+}
+
 #[derive(Debug)]
 pub struct MemoryPool {
-    memory_min_mb : u64,
-    memory_max_mb : u64,
-    read_buffer_max : u64,
     memory_chunks_min : u64,
     memory_chunks_max : u64,
-    buffers_free : u64,
-    buffer_size_max : u64,
+    read_buffer_max : u64,
+
+    statistic : MemoryPoolStat,
 
     memory_chunks : VecDeque<MemoryChunk>,
     memory_chunks_allocated : u64,
     memory_chunks_free : u64,
-    memory_chunks_hmw : u64
 }
 
 impl MemoryPool {
     pub fn new(memory_min_mb : u64, memory_max_mb : u64, read_buffer_max : u64) -> Result<Self, OLRError> {
         debug!("Initialize MemoryPool");
-        let mut result = Self {
-            memory_min_mb,
-            memory_max_mb,
-            read_buffer_max,
-            memory_chunks_min : memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB,
-            memory_chunks_max : memory_max_mb / constants::MEMORY_CHUNK_SIZE_MB,
-            buffers_free : read_buffer_max,
-            buffer_size_max : read_buffer_max * constants::MEMORY_CHUNK_SIZE,
-            memory_chunks : VecDeque::with_capacity((memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB) as usize),
-            memory_chunks_allocated : 0,
-            memory_chunks_free : 0,
-            memory_chunks_hmw : memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB
-        };
 
-        for _ in 0 .. result.memory_chunks_min as usize {
+        let mut memory_chunks = VecDeque::with_capacity((memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB) as usize);
+
+        for _ in 0 .. memory_chunks.len() {
             let chunk = MemoryChunk::new()?;
-            result.memory_chunks.push_back(chunk);
-            result.memory_chunks_allocated += 1;
-            result.memory_chunks_free += 1;
+            memory_chunks.push_back(chunk);
         }
 
-        Ok(result)
+        Ok(Self {
+            memory_chunks_min : memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB,
+            memory_chunks_max : memory_max_mb / constants::MEMORY_CHUNK_SIZE_MB,
+            read_buffer_max,
+            statistic : MemoryPoolStat { 
+                allocated_max_mb : memory_chunks.len() as u64,
+            },
+            memory_chunks_allocated : memory_chunks.len() as u64,
+            memory_chunks_free : memory_chunks.len() as u64,
+            memory_chunks,
+        })
     }
 
     pub fn read_buffer_max(&self) -> u64 {
@@ -137,10 +136,9 @@ impl MemoryPool {
             let chunk = MemoryChunk::new()?;
             self.memory_chunks.push_back(chunk);
             self.memory_chunks_allocated += 1;
-            (self.memory_chunks_allocated - 1) as usize
+            self.statistic.allocated_max_mb = std::cmp::max(self.statistic.allocated_max_mb, self.memory_chunks_allocated);
         } else {
             self.memory_chunks_free -= 1;
-            self.memory_chunks_free as usize
         };
 
         let result = self.memory_chunks.pop_front().expect("queue is not empty");
@@ -155,6 +153,9 @@ impl MemoryPool {
             self.memory_chunks.push_back(chunk);
             self.memory_chunks_free += 1;
         }
+    }
 
+    pub fn get_stat_string(&self) -> String {
+        format!("Max allocated: {}Mb", self.statistic.allocated_max_mb)
     }
 }

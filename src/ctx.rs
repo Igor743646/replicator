@@ -60,4 +60,9 @@ impl Ctx {
         debug!("RBM: {}", guard.read_buffer_max());
         crossbeam::channel::bounded::<ReaderMessage>(guard.read_buffer_max() as usize)
     }
+
+    pub fn get_memory_stat(&self) -> String {
+        let guard = self.memory_manager.lock().unwrap();
+        guard.get_stat_string()
+    }
 }

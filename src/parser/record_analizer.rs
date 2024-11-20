@@ -29,12 +29,7 @@ impl RecordAnalizer for Parser {
         assert_eq!(sz, record.size);
 
         if record.block == 2 {
-            std::fs::create_dir_all(PathBuf::new().join(self.context_ptr.dump.path.as_str())).unwrap();
-            let dump_path = PathBuf::new().join(self.context_ptr.dump.path.as_str()).join(format!("dump-{}.ansi", self.sequence()));
-            info!("dsf");
-            let mut dump_file = File::create(dump_path).unwrap();
-            dump_file.write_fmt(format_args!("\n============\n{}\n============", reader.to_hex_dump())).unwrap();
-            info!("dsf");
+            self.write_dump(format_args!("\n============\n{}\n============", reader.to_hex_dump()));
         }
 
         Ok(())

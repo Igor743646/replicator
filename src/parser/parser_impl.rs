@@ -1,5 +1,7 @@
+use core::fmt;
 use std::fmt::Display;
-use std::fs::Metadata;
+use std::fs::{File, Metadata};
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
 use std::path::PathBuf;
@@ -110,6 +112,7 @@ pub struct Parser {
     block_size : Option<usize>,
     endian     : Option<byte_reader::Endian>,
     metadata   : Option<Metadata>,
+    pub dump_file  : Option<File>,
 
     records_manager : RecordsManager,
 }
@@ -140,14 +143,27 @@ impl Ord for Parser {
 
 impl Parser {
     pub fn new(context_ptr : Arc<Ctx> , file_path : PathBuf, sequence : TypeSeq) -> Self {
+        let mut dump_file = None;
+        if context_ptr.dump.level > 0 {
+            std::fs::create_dir_all(PathBuf::new().join(context_ptr.dump.path.as_str())).unwrap();
+            let dump_path = PathBuf::new().join(context_ptr.dump.path.as_str()).join(format!("dump-{}.ansi", sequence));
+            dump_file = Some(File::create(dump_path).unwrap());
+        }
         Self {
             context_ptr: context_ptr.clone(), 
             file_path, 
             sequence,
             block_size : None, 
             endian : None, 
-            metadata : None, 
+            metadata : None,
+            dump_file,
             records_manager : RecordsManager::new(context_ptr.clone()),
+        }
+    }
+
+    pub fn write_dump(&mut self, fmt: fmt::Arguments<'_>) {
+        if let Some(file) = &mut self.dump_file {
+            file.write_fmt(fmt).unwrap();
         }
     }
 
@@ -206,6 +222,7 @@ impl Parser {
 
                 if start_block == 1 {
                     redo_log_header = self.get_redo_log_header(&phisical_block)?;
+                    self.write_dump(format_args!("{:#?}", redo_log_header));
                     start_block += 1;
                     end_block += 1;
                     continue;

@@ -1,5 +1,5 @@
 use std::{cmp::Reverse, sync::Arc};
-use log::{debug, warn};
+use log::{debug, info, warn};
 
 use crate::{builder::JsonBuilder, common::{errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata};
 
@@ -55,7 +55,8 @@ impl Thread for OnlineReplicator {
             }
         }
 
-        debug!("Stop replicator. Thread id: {} alias: {}", self.thread_id(), self.alias());
+        info!("Stop replicator. Thread id: {} alias: {}", self.thread_id(), self.alias());
+        info!("{}", self.context_ptr.get_memory_stat());
         Ok(())
     }
 
