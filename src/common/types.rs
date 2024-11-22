@@ -129,3 +129,26 @@ impl Display for TypeTimestamp {
         write!(f, "{:04}-{:02}-{:02} {:02}:{:02}:{:02} ({})", yy, mm, dd, hh, mi, ss, self.0)
     }
 }
+
+#[derive(Debug)]
+pub struct TypeXid {
+    pub undo_segment_number : u16,
+    pub slot_number : u16,
+    pub sequence_number : u32,
+}
+
+impl From<u64> for TypeXid {
+    fn from(value: u64) -> Self {
+        Self {
+            undo_segment_number : ((value >> 48) & 0xFFFF) as u16,
+            slot_number : ((value >> 32) & 0xFFFF) as u16,
+            sequence_number : (value & 0xFFFFFFFF) as u32,
+        }
+    }
+}
+
+impl Display for TypeXid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{} ({:04X}.{:04X}.{:08X})", self.undo_segment_number, self.slot_number, self.sequence_number, self.undo_segment_number, self.slot_number, self.sequence_number)
+    }
+}

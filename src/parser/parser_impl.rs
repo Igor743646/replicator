@@ -9,13 +9,15 @@ use std::time::Instant;
 use std::path::PathBuf;
 
 use clap::error::Result;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 
 use crate::common::thread::spawn;
 use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
 use crate::ctx::Ctx;
 use crate::olr_perr;
 use crate::parser::fs_reader::{Reader, ReaderMessage};
+use crate::parser::opcodes::opcode0502::OpCode0502;
+use crate::parser::opcodes::VectorParser;
 use crate::parser::record_analizer::RecordAnalizer;
 use crate::parser::records_manager::Record;
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
@@ -95,6 +97,13 @@ pub struct RedoRecordHeaderExpansion {
     pub records_timestamp   : TypeTimestamp,
 }
 
+impl Display for RedoRecordHeaderExpansion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Num/NumMax: {}/{} Records count: {}\nRecord SCN: {}\nSCN1: {}\nSCN2: {}\nTimestamp: {}", 
+                self.record_num, self.record_num_max, self.records_count, self.records_scn, self.scn1, self.scn2, self.records_timestamp)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct RedoRecordHeader {
     pub record_size : u32,
@@ -103,6 +112,19 @@ pub struct RedoRecordHeader {
     pub sub_scn : u16,
     pub container_uid : Option<u32>,
     pub expansion : Option<RedoRecordHeaderExpansion>,
+}
+
+impl Display for RedoRecordHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Record size: {} VLD: {:02X}\nRecord SCN: {} Sub SCN: {}\n", self.record_size, self.vld, self.scn, self.sub_scn)?;
+        if let Some(con_id) = self.container_uid {
+            write!(f, "Container id: {}\n", con_id)?;
+        }
+        if let Some(ref ext) = self.expansion {
+            write!(f, "{}\n", ext)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -124,6 +146,19 @@ pub struct RedoVectorHeader {
 
     pub fields_count : u16,
     pub fields_sizes : Vec<u16>,
+}
+
+impl Display for RedoVectorHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OpCode: {}.{} ({:02X}.{:02X})\n", self.op_code.0, self.op_code.1, self.op_code.0, self.op_code.1)?;
+        write!(f, "Class: {} Absolute file number: {} DBA: {}\n", self.class, self.afn, self.dba)?;
+        write!(f, "Vector SCN: {} SEQ: {} TYP: {}\n", self.vector_scn, self.seq, self.typ)?;
+        if let Some(ref ext) = self.expansion {
+            write!(f, "Container id: {} Flag: {}\n", ext.container_id, ext.flag)?;
+        }
+        write!(f, "Fields count: {}\n", self.fields_count)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -500,20 +535,25 @@ impl RecordAnalizer for Parser {
             self.write_dump(format_args!("\n\n########################################################\n"));
             self.write_dump(format_args!("#                     REDO RECORD                      #\n"));
             self.write_dump(format_args!("########################################################\n"));
-            self.write_dump(format_args!("\nHeader: {:#?}", record_header));
-            
-            self.write_dump(format_args!("\n{}\n", reader.to_hex_dump()));
+            self.write_dump(format_args!("\nHeader: {}", record_header));
         }
         
         while !reader.eof() {
-            let vector_header = reader.read_redo_vector_header(version).unwrap();
-            self.write_dump(format_args!("\n{:#?}", vector_header));
+            let vector_header: RedoVectorHeader = reader.read_redo_vector_header(version).unwrap();
+            self.write_dump(format_args!("\n{}", vector_header));
             
-            for sz in vector_header.fields_sizes {
-                reader.skip_bytes((4 - reader.cursor() % 4) % 4);
-                reader.skip_bytes(sz as usize);
+            match vector_header.op_code {
+                (5, 2) => OpCode0502::parse(self, &vector_header, &mut reader)?,
+                (a, b) => { 
+                    warn!("Opcode: {}.{} not implemented", a, b); 
+                    for sz in vector_header.fields_sizes {
+                        reader.align_up(4);
+                        reader.skip_bytes(sz as usize);
+                    }
+                },
             }
-            reader.skip_bytes((4 - reader.cursor() % 4) % 4);
+            
+            reader.align_up(4);
         }
 
         Ok(())

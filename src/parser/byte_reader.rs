@@ -1,6 +1,8 @@
-use std::{fmt::Write, io::{Error, ErrorKind, Result}};
+use std::{fmt::Write, io::{Error, ErrorKind}};
 
-use crate::common::{constants::{self, REDO_VERSION_12_1}, types::{TypeRBA, TypeScn, TypeTimestamp}};
+use log::error;
+
+use crate::{common::{constants::{self, REDO_VERSION_12_1}, errors::OLRError, types::{TypeRBA, TypeScn, TypeTimestamp}}, olr_perr};
 
 use super::parser_impl::{BlockHeader, RedoRecordHeader, RedoRecordHeaderExpansion, RedoVectorHeader, RedoVectorHeaderExpansion};
 
@@ -44,12 +46,9 @@ impl<'a> ByteReader<'a> {
         self.cursor = 0;
     }
 
-    pub fn set_cursor(&mut self, position : usize) -> Result<()> {
+    pub fn set_cursor(&mut self, position : usize) -> Result<(), OLRError> {
         if position > self.data.len() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "could not set cursor greater than buffer length",
-            ));
+            return olr_perr!("Could not set cursor greater than buffer length");
         }
 
         self.cursor = position;
@@ -64,17 +63,19 @@ impl<'a> ByteReader<'a> {
         self.cursor = std::cmp::min(self.cursor + size, self.data.len());
     }
 
+    pub fn align_up(&mut self, size : usize) {
+        assert!(size.count_ones() == 1);
+        self.cursor = (self.cursor + (size - 1)) & !(size - 1);
+    }
+
     pub fn eof(&mut self) -> bool {
         self.cursor >= self.data.len()
     }
 
     #[inline]
-    fn validate_size(&self, size : usize) -> Result<()> {
+    fn validate_size(&self, size : usize) -> Result<(), OLRError> {
         if self.cursor + size > self.data.len() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "could not read, not enough bytes",
-            ));
+            return olr_perr!("Could not read, not enough bytes. Dump:\x1b[0m {}", self.to_hex_dump());
         }
         Ok(())
     }
@@ -89,7 +90,7 @@ impl<'a> ByteReader<'a> {
         result
     }
 
-    pub fn read_u8(&mut self) -> Result<u8> {
+    pub fn read_u8(&mut self) -> Result<u8, OLRError> {
         self.validate_size(1)?;
         unsafe { Ok(self.read_u8_unchecked()) }
     }
@@ -117,7 +118,7 @@ impl<'a> ByteReader<'a> {
         result
     }
 
-    pub fn read_u16(&mut self) -> Result<u16> {
+    pub fn read_u16(&mut self) -> Result<u16, OLRError> {
         self.validate_size(2)?;
         unsafe { Ok(self.read_u16_unchecked()) }
     }
@@ -151,7 +152,7 @@ impl<'a> ByteReader<'a> {
         result
     }
 
-    pub fn read_u32(&mut self) -> Result<u32> {
+    pub fn read_u32(&mut self) -> Result<u32, OLRError> {
         self.validate_size(4)?;
         Ok(unsafe { self.read_u32_unchecked() })
     }
@@ -197,7 +198,7 @@ impl<'a> ByteReader<'a> {
         result
     }
 
-    pub fn read_u64(&mut self) -> Result<u64> {
+    pub fn read_u64(&mut self) -> Result<u64, OLRError> {
         self.validate_size(8)?;
         Ok(unsafe { self.read_u64_unchecked() })
     }
@@ -206,7 +207,7 @@ impl<'a> ByteReader<'a> {
         self.read_u8_unchecked() as i8
     }
 
-    pub fn read_i8(&mut self) -> Result<i8> {
+    pub fn read_i8(&mut self) -> Result<i8, OLRError> {
         Ok(self.read_u8()? as i8)
     }
 
@@ -214,7 +215,7 @@ impl<'a> ByteReader<'a> {
         self.read_u16_unchecked() as i16
     }
 
-    pub fn read_i16(&mut self) -> Result<i16> {
+    pub fn read_i16(&mut self) -> Result<i16, OLRError> {
         Ok(self.read_u16()? as i16)
     }
 
@@ -222,7 +223,7 @@ impl<'a> ByteReader<'a> {
         self.read_u32_unchecked() as i32
     }
 
-    pub fn read_i32(&mut self) -> Result<i32> {
+    pub fn read_i32(&mut self) -> Result<i32, OLRError> {
         Ok(self.read_u32()? as i32)
     }
 
@@ -230,7 +231,7 @@ impl<'a> ByteReader<'a> {
         self.read_u64_unchecked() as i64
     }
 
-    pub fn read_i64(&mut self) -> Result<i64> {
+    pub fn read_i64(&mut self) -> Result<i64, OLRError> {
         Ok(self.read_u64()? as i64)
     }
 
@@ -242,12 +243,12 @@ impl<'a> ByteReader<'a> {
         ) }
     }
 
-    pub fn read_rba(&mut self) -> Result<TypeRBA> {
+    pub fn read_rba(&mut self) -> Result<TypeRBA, OLRError> {
         self.validate_size(10)?;
         Ok( unsafe { self.read_rba_unchecked() } )
     }
 
-    pub fn read_block_header(&mut self) -> Result<BlockHeader> {
+    pub fn read_block_header(&mut self) -> Result<BlockHeader, OLRError> {
         self.validate_size(16)?;
 
         unsafe {
@@ -287,7 +288,7 @@ impl<'a> ByteReader<'a> {
         TypeScn::from(res)
     }
 
-    pub fn read_scn(&mut self) -> Result<TypeScn> {
+    pub fn read_scn(&mut self) -> Result<TypeScn, OLRError> {
         self.validate_size(8)?;
         Ok(unsafe { self.read_scn_unchecked() })
     }
@@ -296,12 +297,12 @@ impl<'a> ByteReader<'a> {
         unsafe { self.read_u32_unchecked().into() }
     }
 
-    pub fn read_timestamp(&mut self) -> Result<TypeTimestamp> {
+    pub fn read_timestamp(&mut self) -> Result<TypeTimestamp, OLRError> {
         self.validate_size(4)?;
         Ok(unsafe { self.read_timestamp_unchecked() })
     }
 
-    pub fn read_bytes(&mut self, size : usize) -> Result<Vec<u8>> {
+    pub fn read_bytes(&mut self, size : usize) -> Result<Vec<u8>, OLRError> {
         self.validate_size(size)?;
         let mut res = Vec::<u8>::new();
         res.resize(size, 0);
@@ -311,7 +312,7 @@ impl<'a> ByteReader<'a> {
         Ok(res)
     }
 
-    pub fn read_redo_record_header(&mut self, version : u32) -> Result<RedoRecordHeader> {
+    pub fn read_redo_record_header(&mut self, version : u32) -> Result<RedoRecordHeader, OLRError> {
         self.validate_size(24)?;
 
         let mut result = RedoRecordHeader::default();
@@ -350,7 +351,7 @@ impl<'a> ByteReader<'a> {
         Ok(result)
     }
 
-    pub fn read_redo_vector_header(&mut self, version : u32) -> Result<RedoVectorHeader> {
+    pub fn read_redo_vector_header(&mut self, version : u32) -> Result<RedoVectorHeader, OLRError> {
         if version >= constants::REDO_VERSION_12_1 {
             self.validate_size(24 + 8 + 2)?;
         } else {
@@ -382,7 +383,13 @@ impl<'a> ByteReader<'a> {
 
             result.fields_count = (self.read_u16_unchecked() - 2) / 2;
             result.fields_sizes.resize_with(result.fields_count as usize, || -> u16 {
-                self.read_u16().unwrap()
+                let res = self.read_u16();
+
+                if let Err(err) = res {
+                    error!("Redo vector header parsing error: {}", err);
+                    panic!()
+                }
+                res.unwrap()
             });
         }
 
@@ -475,14 +482,11 @@ impl<'a> ByteReader<'a> {
         str + a.as_str()
     }
 
-    pub fn read_bytes_into(&mut self, size : usize, buffer : &mut [u8]) -> Result<()> {
+    pub fn read_bytes_into(&mut self, size : usize, buffer : &mut [u8]) -> Result<(), OLRError> {
         self.validate_size(size)?;
         
         if buffer.len() < size {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "could not write in buffer with not enough capacity",
-            ));
+            return olr_perr!("Could not write in buffer with not enough capacity");
         }
 
         let range = self.cursor .. self.cursor + size;
@@ -497,13 +501,12 @@ impl<'a> ByteReader<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::parser::byte_reader::Endian;
+    use crate::{common::errors::OLRError, parser::byte_reader::Endian};
 
     use super::ByteReader;
-    use std::io::Result;
 
     #[test]
-    fn test_simple() -> Result<()> {
+    fn test_simple() -> Result<(), OLRError> {
         let buffer: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
         let mut reader = ByteReader::from_bytes(buffer.as_slice());
 
@@ -534,7 +537,7 @@ mod test {
     }
 
     #[test]
-    fn read_scn() -> Result<()> {
+    fn read_scn() -> Result<(), OLRError> {
         let buffer: [u8; 16] = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,   0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00];
         let mut reader = ByteReader::from_bytes(&buffer);
 
@@ -548,7 +551,7 @@ mod test {
     }
 
     #[test]
-    fn read_scn2_little() -> Result<()> {
+    fn read_scn2_little() -> Result<(), OLRError> {
         let buffer: [u8; 16] = [0x7A, 0x90, 0xA1, 0x06, 0x55, 0xA4, 0x24, 0x00,   0x7A, 0x90, 0xA1, 0x06, 0x55, 0x24, 0x00, 0x00];
         let mut reader = ByteReader::from_bytes(&buffer);
         reader.set_endian(Endian::LittleEndian);
@@ -562,7 +565,7 @@ mod test {
     }
 
     #[test]
-    fn read_scn2_big() -> Result<()> {
+    fn read_scn2_big() -> Result<(), OLRError> {
         let buffer: [u8; 16] = [0x7A, 0x90, 0xA1, 0x06, 0x55, 0xA4, 0x00, 0x00,   0x7A, 0x90, 0xA1, 0x06, 0xA5, 0x24, 0x00, 0x24];
         let mut reader = ByteReader::from_bytes(&buffer);
         reader.set_endian(Endian::BigEndian);
