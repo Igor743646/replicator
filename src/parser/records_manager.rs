@@ -15,7 +15,13 @@ pub struct Record {
 }
 
 impl Record {
-    pub fn data(&mut self) -> &mut [u8] {
+    pub fn data(&self) -> &[u8] {
+        unsafe {
+            ptr::slice_from_raw_parts_mut(self.data, self.size as usize).as_ref().unwrap()
+        }
+    }
+
+    pub fn data_mut(&mut self) -> &mut [u8] {
         unsafe {
             ptr::slice_from_raw_parts_mut(self.data, self.size as usize).as_mut().unwrap()
         }

@@ -1,7 +1,7 @@
 use std::{fs::{File, Metadata}, io::{Read, Seek}, path::PathBuf, sync::Arc, time};
 
 use crossbeam::channel::Sender;
-use log::{debug, info, warn};
+use log::{debug, info, warn, error};
 
 use crate::{common::{errors::OLRError, memory_pool::MemoryChunk, thread::Thread}, ctx::Ctx, olr_err, olr_perr};
 use crate::common::OLRErrorCode::*;
@@ -61,7 +61,10 @@ impl Reader {
             
             if size == 0 {
                 self.free_chunk(chunk);
-                self.sender.send(ReaderMessage::Eof).unwrap();
+                if let Err(err) = self.sender.send(ReaderMessage::Eof) {
+                    warn!("Problems while sending EOF info. Err: {}", err);
+                    return Err((read_size, olr_err!(ChannelSend, "Can not send message: {}", err)));
+                }
                 debug!("Eof. Stop reading file.");
                 break;
             }
@@ -83,7 +86,10 @@ impl Reader {
                 continue;
             }
 
-            self.sender.send(ReaderMessage::Read(chunk, size)).unwrap();
+            if let Err(err) = self.sender.send(ReaderMessage::Read(chunk, size)) {
+                warn!("Problems while sending next partition. Err: {}", err);
+                return Err((read_size, olr_err!(ChannelSend, "Can not send message: {}", err)));
+            }
             read_size += size;
         }
         Ok(read_size)
@@ -150,7 +156,7 @@ impl Thread for Reader {
             let mut archive_log_file = archive_log_file.unwrap();
 
             if block_size.is_none() { // for the first loop cycle
-                info!("Get block size, metadata and endian");
+                debug!("Get block size, metadata and endian");
                 let metadata = archive_log_file.metadata();
 
                 if let Err(err) = metadata {
@@ -178,7 +184,11 @@ impl Thread for Reader {
                 }
                 let result = result.unwrap();
                 block_size = Some(result.0);
-                self.sender.send(ReaderMessage::Start(result.0, metadata, result.1)).unwrap();
+
+                if let Err(err) = self.sender.send(ReaderMessage::Start(result.0, metadata, result.1)) {
+                    warn!("Problems while sending file info. Err: {}", err);
+                    return olr_err!(ChannelSend, "Can not send message: {}", err);
+                }
             }
             
             let seek_result = archive_log_file.seek(std::io::SeekFrom::Start(confirmed_size as u64));

@@ -1,8 +1,8 @@
 use std::{fmt::Write, io::{Error, ErrorKind, Result}};
 
-use crate::common::{constants::REDO_VERSION_12_1, types::{TypeRBA, TypeScn, TypeTimestamp}};
+use crate::common::{constants::{self, REDO_VERSION_12_1}, types::{TypeRBA, TypeScn, TypeTimestamp}};
 
-use super::parser_impl::{BlockHeader, RedoRecordHeader, RedoRecordHeaderExpansion};
+use super::parser_impl::{BlockHeader, RedoRecordHeader, RedoRecordHeaderExpansion, RedoVectorHeader, RedoVectorHeaderExpansion};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -62,6 +62,10 @@ impl<'a> ByteReader<'a> {
 
     pub fn skip_bytes(&mut self, size : usize) {
         self.cursor = std::cmp::min(self.cursor + size, self.data.len());
+    }
+
+    pub fn eof(&mut self) -> bool {
+        self.cursor >= self.data.len()
     }
 
     #[inline]
@@ -341,6 +345,45 @@ impl<'a> ByteReader<'a> {
                 exp.records_timestamp = self.read_timestamp()?;
                 result.expansion = Some(exp);
             }
+        }
+
+        Ok(result)
+    }
+
+    pub fn read_redo_vector_header(&mut self, version : u32) -> Result<RedoVectorHeader> {
+        if version >= constants::REDO_VERSION_12_1 {
+            self.validate_size(24 + 8 + 2)?;
+        } else {
+            self.validate_size(24 + 2)?;
+        }
+
+        let mut result = RedoVectorHeader::default();
+
+        unsafe {
+            result.op_code.0 = self.read_u8_unchecked();
+            result.op_code.1 = self.read_u8_unchecked();
+            result.class = self.read_u16_unchecked();
+            result.afn = self.read_u16_unchecked();
+            self.skip_bytes(2);
+            result.dba = self.read_u32_unchecked();
+            result.vector_scn = self.read_scn_unchecked();
+            result.seq = self.read_u8_unchecked();
+            result.typ = self.read_u8_unchecked();
+            self.skip_bytes(2);
+
+            if version >= constants::REDO_VERSION_12_1 {
+                let mut ext = RedoVectorHeaderExpansion::default();
+                ext.container_id = self.read_u16_unchecked();
+                self.skip_bytes(2);
+                ext.flag = self.read_u16_unchecked();
+                self.skip_bytes(2);
+                result.expansion = Some(ext);
+            }
+
+            result.fields_count = (self.read_u16_unchecked() - 2) / 2;
+            result.fields_sizes.resize_with(result.fields_count as usize, || -> u16 {
+                self.read_u16().unwrap()
+            });
         }
 
         Ok(result)

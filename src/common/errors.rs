@@ -57,7 +57,7 @@ impl<T> Into<Result<T, OLRError>> for OLRError {
 
 impl std::fmt::Display for OLRError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[Src: {} Line: {}] Code: {:06} Description: {} Backtrace: {}", self.source, self.line, self.code as i32, self.message, self.backtrace)
+        write!(f, "[Src: {}:{}] Code: \x1b[91m{:06}\x1b[0m Description: \x1b[95m{}\x1b[0m Backtrace: {}", self.source, self.line, self.code as i32, self.message, self.backtrace)
     }
 }
 

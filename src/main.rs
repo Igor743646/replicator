@@ -96,7 +96,7 @@ fn main() {
 
     if let Err(err) = res {
         error!("{}", err);
-        error!("Replication stopped due to error");
+        info!("Replication stopped due to error");
     } else {
         info!("Replication stopped");
     }

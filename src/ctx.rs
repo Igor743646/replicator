@@ -57,7 +57,6 @@ impl Ctx {
 
     pub fn get_reader_channel(&self) -> (Sender<ReaderMessage>, Receiver<ReaderMessage>)  {
         let guard = self.memory_manager.lock().unwrap();
-        debug!("RBM: {}", guard.read_buffer_max());
         crossbeam::channel::bounded::<ReaderMessage>(guard.read_buffer_max() as usize)
     }
 

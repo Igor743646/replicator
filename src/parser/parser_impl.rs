@@ -2,12 +2,14 @@ use core::fmt;
 use std::fmt::Display;
 use std::fs::{File, Metadata};
 use std::io::Write;
+use std::ops::DerefMut;
+use std::process::exit;
 use std::sync::Arc;
 use std::time::Instant;
 use std::path::PathBuf;
 
 use clap::error::Result;
-use log::info;
+use log::{debug, info, trace};
 
 use crate::common::thread::spawn;
 use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
@@ -103,6 +105,27 @@ pub struct RedoRecordHeader {
     pub expansion : Option<RedoRecordHeaderExpansion>,
 }
 
+#[derive(Debug, Default)]
+pub struct RedoVectorHeaderExpansion {
+    pub container_id : u16,
+    pub flag : u16,
+}
+
+#[derive(Debug, Default)]
+pub struct RedoVectorHeader {
+    pub op_code : (u8, u8),
+    pub class : u16,
+    pub afn : u16, // absolute file number
+    pub dba : u32,
+    pub vector_scn : TypeScn,
+    pub seq : u8,  // sequence number
+    pub typ : u8,  // change type
+    pub expansion : Option<RedoVectorHeaderExpansion>,
+
+    pub fields_count : u16,
+    pub fields_sizes : Vec<u16>,
+}
+
 #[derive(Debug)]
 pub struct Parser {
     pub context_ptr : Arc<Ctx>,
@@ -112,7 +135,7 @@ pub struct Parser {
     block_size : Option<usize>,
     endian     : Option<byte_reader::Endian>,
     metadata   : Option<Metadata>,
-    pub dump_file  : Option<File>,
+    dump_file  : Option<File>,
 
     records_manager : RecordsManager,
 }
@@ -278,7 +301,10 @@ impl Parser {
 
                     let to_copy = std::cmp::min(to_read, self.block_size.unwrap() - reader.cursor());
 
-                    let buffer = &mut record.as_mut().unwrap().data()[record_position .. record_position + to_copy];
+                    let buffer = &mut record
+                            .as_mut()
+                            .unwrap()
+                            .data_mut()[record_position .. record_position + to_copy];
 
                     assert!(buffer.len() == to_copy);
                     reader.read_bytes_into(to_copy, buffer).unwrap();
@@ -297,7 +323,7 @@ impl Parser {
                             return olr_perr!("No record, but expected");
                         }
 
-                        self.analize_record(record.unwrap())?;
+                        self.analize_record(record.unwrap(), redo_log_header.oracle_version)?;
                     }
 
                     self.records_manager.free_chunks();
@@ -306,6 +332,7 @@ impl Parser {
             }
 
             {
+                info!("Processed chunk");
                 self.context_ptr.free_chunk(chunk);
             }
         }
@@ -452,3 +479,43 @@ impl Parser {
 }
 
 
+impl RecordAnalizer for Parser {
+    fn analize_record(&mut self, record_ptr : *mut Record, version : u32) -> Result<(), OLRError> {
+        
+        let record = unsafe { record_ptr.as_mut().unwrap() };
+
+        trace!("Analize block: {} offset: {} scn: {} subscn: {}", record.block, record.offset, record.scn, record.sub_scn);
+
+        let data = record.data();
+
+        let mut reader = ByteReader::from_bytes(data);
+        reader.set_endian(self.endian.unwrap());
+        let record_header = reader.read_redo_record_header(version).unwrap();
+        
+        if record_header.record_size != record.size {
+            return olr_perr!("Sizes must be equal, but: {} != {}", record_header.record_size, record.size);
+        }
+
+        if self.dump_file.is_some() {
+            self.write_dump(format_args!("\n\n########################################################\n"));
+            self.write_dump(format_args!("#                     REDO RECORD                      #\n"));
+            self.write_dump(format_args!("########################################################\n"));
+            self.write_dump(format_args!("\nHeader: {:#?}", record_header));
+            
+            self.write_dump(format_args!("\n{}\n", reader.to_hex_dump()));
+        }
+        
+        while !reader.eof() {
+            let vector_header = reader.read_redo_vector_header(version).unwrap();
+            self.write_dump(format_args!("\n{:#?}", vector_header));
+            
+            for sz in vector_header.fields_sizes {
+                reader.skip_bytes((4 - reader.cursor() % 4) % 4);
+                reader.skip_bytes(sz as usize);
+            }
+            reader.skip_bytes((4 - reader.cursor() % 4) % 4);
+        }
+
+        Ok(())
+    }
+}
