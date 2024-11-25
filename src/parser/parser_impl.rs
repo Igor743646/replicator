@@ -17,6 +17,8 @@ use crate::ctx::Ctx;
 use crate::olr_perr;
 use crate::parser::fs_reader::{Reader, ReaderMessage};
 use crate::parser::opcodes::opcode0502::OpCode0502;
+use crate::parser::opcodes::opcode0504::OpCode0504;
+use crate::parser::opcodes::opcode0520::OpCode0520;
 use crate::parser::opcodes::VectorParser;
 use crate::parser::record_analizer::RecordAnalizer;
 use crate::parser::records_manager::Record;
@@ -167,10 +169,12 @@ pub struct Parser {
     file_path : PathBuf,
     sequence : TypeSeq,
 
-    block_size : Option<usize>,
-    endian     : Option<byte_reader::Endian>,
-    metadata   : Option<Metadata>,
-    dump_file  : Option<File>,
+    block_size      : Option<usize>,
+    version         : Option<u32>,
+    endian          : Option<byte_reader::Endian>,
+    metadata        : Option<Metadata>,
+    pub dump_log_level  : u64,
+    dump_file       : Option<File>,
 
     records_manager : RecordsManager,
 }
@@ -211,22 +215,30 @@ impl Parser {
             context_ptr: context_ptr.clone(), 
             file_path, 
             sequence,
-            block_size : None, 
+            block_size : None,
+            version : None,
             endian : None, 
             metadata : None,
+            dump_log_level : context_ptr.dump.level,
             dump_file,
             records_manager : RecordsManager::new(context_ptr.clone()),
         }
     }
 
+    pub fn can_dump(&self, level : u64) -> bool {
+        level <= self.dump_log_level
+    }
+
     pub fn write_dump(&mut self, fmt: fmt::Arguments<'_>) {
-        if let Some(file) = &mut self.dump_file {
-            file.write_fmt(fmt).unwrap();
-        }
+        self.dump_file.as_ref().unwrap().write_fmt(fmt).unwrap();
     }
 
     pub fn sequence(&self) -> TypeSeq {
         self.sequence
+    }
+
+    pub fn version(&self) -> Option<u32> {
+        self.version
     }
 
     pub fn parse(&mut self) -> Result<(), OLRError> {
@@ -280,7 +292,10 @@ impl Parser {
 
                 if start_block == 1 {
                     redo_log_header = self.get_redo_log_header(&phisical_block)?;
-                    self.write_dump(format_args!("{:#?}", redo_log_header));
+                    if self.can_dump(1) {
+                        self.write_dump(format_args!("{:#?}", redo_log_header));
+                    }
+                    self.version = Some(redo_log_header.oracle_version);
                     start_block += 1;
                     end_block += 1;
                     continue;
@@ -525,13 +540,13 @@ impl RecordAnalizer for Parser {
 
         let mut reader = ByteReader::from_bytes(data);
         reader.set_endian(self.endian.unwrap());
-        let record_header = reader.read_redo_record_header(version).unwrap();
+        let record_header = reader.read_redo_record_header(version)?;
         
         if record_header.record_size != record.size {
             return olr_perr!("Sizes must be equal, but: {} != {}", record_header.record_size, record.size);
         }
 
-        if self.dump_file.is_some() {
+        if self.can_dump(1) {
             self.write_dump(format_args!("\n\n########################################################\n"));
             self.write_dump(format_args!("#                     REDO RECORD                      #\n"));
             self.write_dump(format_args!("########################################################\n"));
@@ -539,16 +554,25 @@ impl RecordAnalizer for Parser {
         }
         
         while !reader.eof() {
-            let vector_header: RedoVectorHeader = reader.read_redo_vector_header(version).unwrap();
-            self.write_dump(format_args!("\n{}", vector_header));
-            
+            let vector_header: RedoVectorHeader = reader.read_redo_vector_header(version)?;
+            reader.align_up(4);
+
+            if self.can_dump(1) {
+                self.write_dump(format_args!("\n{}", vector_header));
+            }
+
             match vector_header.op_code {
                 (5, 2) => OpCode0502::parse(self, &vector_header, &mut reader)?,
-                (a, b) => { 
-                    warn!("Opcode: {}.{} not implemented", a, b); 
+                (5, 4) => OpCode0504::parse(self, &vector_header, &mut reader)?,
+                (5, 20) => OpCode0520::parse(self, &vector_header, &mut reader)?,
+                (a, b) => {
+                    match (a, b) {
+                        (11, 17) => (),
+                        (a, b) => warn!("Opcode: {}.{} not implemented", a, b),
+                    }
                     for sz in vector_header.fields_sizes {
-                        reader.align_up(4);
                         reader.skip_bytes(sz as usize);
+                        reader.align_up(4);
                     }
                 },
             }

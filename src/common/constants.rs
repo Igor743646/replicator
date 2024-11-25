@@ -12,3 +12,6 @@ pub const REDO_VERSION_12_2 : u32 = 0x0C200000;
 pub const REDO_VERSION_18_0 : u32 = 0x12000000;
 pub const REDO_VERSION_19_0 : u32 = 0x13000000;
 pub const REDO_VERSION_23_0 : u32 = 0x17000000;
+
+pub const FLAG_KTUCF_OP0504 : u8 = 0x02;
+pub const FLAG_KTUCF_ROLLBACK : u8 = 0x02;
