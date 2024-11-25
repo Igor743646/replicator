@@ -130,7 +130,7 @@ impl Display for TypeTimestamp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TypeXid {
     pub undo_segment_number : u16,
     pub slot_number : u16,
