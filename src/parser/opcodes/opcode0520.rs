@@ -1,5 +1,5 @@
-use super::VectorParser;
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}}};
+use super::{verify_fields_count, VectorParser};
+use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}}};
 
 #[derive(Default)]
 pub struct OpCode0520 {
@@ -120,7 +120,8 @@ impl OpCode0520 {
 
 impl VectorParser for OpCode0520 {
     fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader) -> Result<(), OLRError> {
-        assert!(vector_header.fields_count <= 8, "Count of fields ({}) > 8", vector_header.fields_count);
+        verify_fields_count(reader, vector_header, 8)?;
+
         let mut result = OpCode0520::default();
 
         result.session_attribute_1(parser, vector_header, reader, 0)?;

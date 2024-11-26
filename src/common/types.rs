@@ -137,6 +137,16 @@ pub struct TypeXid {
     pub sequence_number : u32,
 }
 
+impl TypeXid {
+    pub fn new(usn : u16, slt : u16, seq : u32) -> Self {
+        Self {
+            undo_segment_number : usn,
+            slot_number : slt, 
+            sequence_number : seq,
+        }
+    }
+}
+
 impl From<u64> for TypeXid {
     fn from(value: u64) -> Self {
         Self {
@@ -150,5 +160,24 @@ impl From<u64> for TypeXid {
 impl Display for TypeXid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}.{} ({:04X}.{:04X}.{:08X})", self.undo_segment_number, self.slot_number, self.sequence_number, self.undo_segment_number, self.slot_number, self.sequence_number)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct TypeUba {
+    pub data : u64,
+}
+
+impl TypeUba {
+    pub fn new(data : u64) -> Self {
+        Self {
+            data
+        }
+    }
+}
+
+impl Display for TypeUba {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Uba: block: {} record: {} sequence: {}", self.data & u32::MAX as u64, (self.data >> 48) & 0xFF, (self.data >> 32) & 0xFFFF)
     }
 }

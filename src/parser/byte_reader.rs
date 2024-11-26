@@ -2,7 +2,7 @@ use std::{fmt::Write, io::{Error, ErrorKind}};
 
 use log::error;
 
-use crate::{common::{constants::{self, REDO_VERSION_12_1}, errors::OLRError, types::{TypeRBA, TypeScn, TypeTimestamp}}, olr_perr};
+use crate::{common::{constants::{self, REDO_VERSION_12_1}, errors::OLRError, types::{TypeRBA, TypeScn, TypeTimestamp, TypeUba}}, olr_perr};
 
 use super::parser_impl::{BlockHeader, RedoRecordHeader, RedoRecordHeaderExpansion, RedoVectorHeader, RedoVectorHeaderExpansion};
 
@@ -267,6 +267,16 @@ impl<'a> ByteReader<'a> {
         }
     }
 
+    pub unsafe fn read_uba_unchecked(&mut self) -> TypeUba {
+        let temp : u64 = unsafe { self.read_u64_unchecked() };
+        TypeUba::new(temp)
+    }
+
+    pub fn read_uba(&mut self) -> Result<TypeUba, OLRError> {
+        self.validate_size(8)?;
+        Ok(unsafe { self.read_uba_unchecked() })
+    }
+
     pub unsafe fn read_scn_unchecked(&mut self) -> TypeScn {
         let base : u64 = unsafe { self.read_u32_unchecked() as u64 };
         let wrap1 : u64 = unsafe { self.read_u16_unchecked() as u64 };
@@ -456,7 +466,7 @@ impl<'a> ByteReader<'a> {
     pub fn to_error_hex_dump(&self, start : usize, size : usize) -> String {
         debug_assert!(size > 0);
         debug_assert!(start + size <= self.data.len());
-        let str = "\n                  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F".to_string();
+        let str = "\x1b[0m\n                  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F".to_string();
         let a : String = self.data
             .iter()
             .enumerate()

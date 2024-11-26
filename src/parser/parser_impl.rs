@@ -16,6 +16,7 @@ use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
 use crate::ctx::Ctx;
 use crate::olr_perr;
 use crate::parser::fs_reader::{Reader, ReaderMessage};
+use crate::parser::opcodes::opcode0501::OpCode0501;
 use crate::parser::opcodes::opcode0502::OpCode0502;
 use crate::parser::opcodes::opcode0504::OpCode0504;
 use crate::parser::opcodes::opcode0520::OpCode0520;
@@ -159,7 +160,7 @@ impl Display for RedoVectorHeader {
             write!(f, "Container id: {} Flag: {}\n", ext.container_id, ext.flag)?;
         }
         write!(f, "Fields count: {}\n", self.fields_count)?;
-        Ok(())
+        write!(f, "Fields sizes: {}\n", self.fields_sizes.iter().map(|x| -> String {format!("{} ", x)}).collect::<String>())
     }
 }
 
@@ -562,6 +563,7 @@ impl RecordAnalizer for Parser {
             }
 
             match vector_header.op_code {
+                (5, 1) => OpCode0501::parse(self, &vector_header, &mut reader)?,
                 (5, 2) => OpCode0502::parse(self, &vector_header, &mut reader)?,
                 (5, 4) => OpCode0504::parse(self, &vector_header, &mut reader)?,
                 (5, 20) => OpCode0520::parse(self, &vector_header, &mut reader)?,
@@ -570,10 +572,15 @@ impl RecordAnalizer for Parser {
                         (11, 17) => (),
                         (a, b) => warn!("Opcode: {}.{} not implemented", a, b),
                     }
-                    for sz in vector_header.fields_sizes {
-                        reader.skip_bytes(sz as usize);
-                        reader.align_up(4);
-                    }
+
+                    let vector_size : usize = vector_header.fields_sizes
+                        .iter()
+                        .map(|x| {
+                            ((*x + 3) & !3) as usize
+                        })
+                        .sum();
+                    reader.skip_bytes(vector_size);
+                    reader.align_up(4);
                 },
             }
             

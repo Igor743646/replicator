@@ -1,4 +1,4 @@
-use super::VectorParser;
+use super::{verify_fields_count, VectorParser};
 use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}}};
 
 #[derive(Default)]
@@ -52,28 +52,11 @@ impl OpCode0504 {
         reader.align_up(4);
         Ok(())
     }
-
-    pub fn unknown_field(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(vector_header.fields_sizes[field_num] >= 4, "Size of field {} < 4", vector_header.fields_sizes[field_num]);
-
-        if parser.can_dump(1) {
-            let unknown_value = reader.read_u32()?;
-            parser.write_dump(format_args!("\n[Change {}] Unknown value: {}\n", field_num, unknown_value));
-        } else {
-            reader.skip_bytes(4);
-        }
-
-        reader.skip_bytes(vector_header.fields_sizes[field_num] as usize - 4);
-        reader.align_up(4);
-        Ok(())
-    }
 }
 
 impl VectorParser for OpCode0504 {
     fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader) -> Result<(), OLRError> {
-        if vector_header.fields_count > 3 {
-            return olr_perr!("Count of fields ({}) > 4. Dump: {}", vector_header.fields_count, reader.to_hex_dump());
-        }
+        verify_fields_count(reader, vector_header, 4)?;
 
         let mut result = OpCode0504::default();
 
@@ -85,19 +68,21 @@ impl VectorParser for OpCode0504 {
         
         if result.flg & constants::FLAG_KTUCF_OP0504 != 0 {
             result.ktucf(parser, vector_header, reader, 1)?;
+
+            for sz in 2 .. vector_header.fields_count {
+                reader.skip_bytes(sz as usize);
+                reader.align_up(4);
+            }
         } else {
-            result.unknown_field(parser, vector_header, reader, 1)?;
+            for sz in 1 .. vector_header.fields_count {
+                reader.skip_bytes(sz as usize);
+                reader.align_up(4);
+            }
         }
 
         if parser.can_dump(1) && result.flg & constants::FLAG_KTUCF_ROLLBACK != 0 {
             parser.write_dump(format_args!("\nROLLBACK TRANSACTION\n"));
         }
-
-        if vector_header.fields_count < 3 {
-            return Ok(());
-        }
-
-        result.unknown_field(parser, vector_header, reader, 2)?;
 
         Ok(())
     }
