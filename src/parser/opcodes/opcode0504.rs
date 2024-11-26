@@ -1,5 +1,5 @@
 use super::VectorParser;
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}}};
+use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}}};
 
 #[derive(Default)]
 pub struct OpCode0504 {
@@ -71,7 +71,10 @@ impl OpCode0504 {
 
 impl VectorParser for OpCode0504 {
     fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader) -> Result<(), OLRError> {
-        assert!(vector_header.fields_count <= 3, "Count of fields ({}) > 3", vector_header.fields_count);
+        if vector_header.fields_count > 3 {
+            return olr_perr!("Count of fields ({}) > 4. Dump: {}", vector_header.fields_count, reader.to_hex_dump());
+        }
+
         let mut result = OpCode0504::default();
 
         result.ktucm(parser, vector_header, reader, 0)?;

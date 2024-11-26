@@ -414,7 +414,7 @@ impl<'a> ByteReader<'a> {
     }
 
     pub fn to_hex_dump(&self) -> String {
-        let str = "\n                  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F".to_string();
+        let str = "\x1b[0m\n                  00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F  10 11 12 13 14 15 16 17  18 19 1A 1B 1C 1D 1E 1F".to_string();
         let a : String = self.data
                 .chunks(32)
                 .enumerate()
@@ -436,7 +436,7 @@ impl<'a> ByteReader<'a> {
                     }
 
                     if bytes.len() < 32 {
-                        row.write_str(format!("{:1$}   ", ' ', 3 * (32-bytes.len())).as_str()).unwrap();
+                        row.write_str(format!("{}", " ".repeat(3 * (32 - bytes.len()) + (32 - bytes.len()) / 8  + 1) ).as_str()).unwrap();
                     }
 
                     for byte in bytes {
@@ -450,7 +450,7 @@ impl<'a> ByteReader<'a> {
                     row
                 })
                 .collect();
-        str + a.as_str()
+        str + a.as_str() + "\n"
     }
 
     pub fn to_error_hex_dump(&self, start : usize, size : usize) -> String {
