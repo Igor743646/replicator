@@ -178,6 +178,6 @@ impl TypeUba {
 
 impl Display for TypeUba {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Uba: block: {} record: {} sequence: {}", self.data & u32::MAX as u64, (self.data >> 48) & 0xFF, (self.data >> 32) & 0xFFFF)
+        write!(f, "block: {} record: {} sequence: {}", self.data & u32::MAX as u64, (self.data >> 48) & 0xFF, (self.data >> 32) & 0xFFFF)
     }
 }

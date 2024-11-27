@@ -22,6 +22,7 @@ use crate::parser::opcodes::opcode0504::OpCode0504;
 use crate::parser::opcodes::opcode0520::OpCode0520;
 use crate::parser::opcodes::VectorParser;
 use crate::parser::record_analizer::RecordAnalizer;
+use crate::parser::record_reader::VectorReader;
 use crate::parser::records_manager::Record;
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
 use crate::common::errors::OLRErrorCode::*;
@@ -537,9 +538,7 @@ impl RecordAnalizer for Parser {
 
         trace!("Analize block: {} offset: {} scn: {} subscn: {}", record.block, record.offset, record.scn, record.sub_scn);
 
-        let data = record.data();
-
-        let mut reader = ByteReader::from_bytes(data);
+        let mut reader = ByteReader::from_bytes(record.data());
         reader.set_endian(self.endian.unwrap());
         let record_header = reader.read_redo_record_header(version)?;
         
@@ -562,29 +561,34 @@ impl RecordAnalizer for Parser {
                 self.write_dump(format_args!("\n{}", vector_header));
             }
 
+            let vector_body_size : usize = vector_header.fields_sizes
+                .iter()
+                .map(|x| {
+                    ((*x + 3) & !3) as usize
+                })
+                .sum();
+
+            let mut vec_reader = VectorReader::new(
+                &vector_header, 
+                &reader.data()[reader.cursor() .. reader.cursor() + vector_body_size]
+            );
+
+            reader.skip_bytes(vector_body_size);
+
             match vector_header.op_code {
-                (5, 1) => OpCode0501::parse(self, &vector_header, &mut reader)?,
-                (5, 2) => OpCode0502::parse(self, &vector_header, &mut reader)?,
-                (5, 4) => OpCode0504::parse(self, &vector_header, &mut reader)?,
-                (5, 20) => OpCode0520::parse(self, &vector_header, &mut reader)?,
+                (5, 1) => OpCode0501::parse(self, &vector_header, &mut vec_reader)?,
+                (5, 2) => OpCode0502::parse(self, &vector_header, &mut vec_reader)?,
+                (5, 4) => OpCode0504::parse(self, &vector_header, &mut vec_reader)?,
+                (5, 20) => OpCode0520::parse(self, &vector_header, &mut vec_reader)?,
                 (a, b) => {
                     match (a, b) {
                         (11, 17) => (),
                         (a, b) => warn!("Opcode: {}.{} not implemented", a, b),
                     }
 
-                    let vector_size : usize = vector_header.fields_sizes
-                        .iter()
-                        .map(|x| {
-                            ((*x + 3) & !3) as usize
-                        })
-                        .sum();
-                    reader.skip_bytes(vector_size);
-                    reader.align_up(4);
                 },
             }
             
-            reader.align_up(4);
         }
 
         Ok(())

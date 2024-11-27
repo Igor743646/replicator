@@ -1,0 +1,38 @@
+use std::ops::{Deref, DerefMut};
+
+use super::{byte_reader::ByteReader, parser_impl::RedoVectorHeader, records_manager::Record};
+
+
+pub struct VectorReader<'a> {
+    header : &'a RedoVectorHeader,
+    data : &'a [u8],
+    current_pos : usize,
+    current_field : usize,
+}
+
+impl<'a> VectorReader<'a> {
+    pub fn new(vector_header : &'a RedoVectorHeader, vector_data : &'a [u8]) -> Self {
+        Self {
+            header : vector_header,
+            data : vector_data,
+            current_pos : 0,
+            current_field : 0,
+        }
+    }
+
+    pub fn next_field_reader(&mut self) -> Option<ByteReader<'a>> {
+        if self.current_field >= self.header.fields_count as usize {
+            None
+        } else {
+            let field_size = self.header.fields_sizes[self.current_field] as usize;
+            let reader = ByteReader::from_bytes(&self.data[self.current_pos .. self.current_pos + field_size]);
+            self.current_pos += (field_size  + 3) & !3;
+            self.current_field += 1;
+            Some(reader)
+        }
+    }
+
+    pub fn eof(&self) -> bool {
+        self.current_field >= self.header.fields_count as usize
+    }
+}

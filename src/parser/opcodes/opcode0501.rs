@@ -1,7 +1,7 @@
-use log::warn;
+use log::{info, warn};
 
-use super::{verify_fields_count, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}}};
+use super::VectorParser;
+use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
 
 #[derive(Default)]
 pub struct OpCode0501 {
@@ -12,11 +12,22 @@ pub struct OpCode0501 {
     pub opc : (u8, u8),
     pub slt : u16,
     pub flg : u16,
+
+    pub bdba : u32,
+    pub op : u8,
+    pub flags : u8,
+    pub slot : u16,
+
+    pub fb : u8,
+    pub cc : u8,
+    pub nulls_offset : usize,
+
+    pub nrow : u8,
 }
 
 impl OpCode0501 {
     pub fn ktudb(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(vector_header.fields_sizes[field_num] >= 20, "Size of field {} < 20", vector_header.fields_sizes[field_num]);
+        assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
 
         reader.skip_bytes(8);
         let usn = reader.read_u16()?;
@@ -29,13 +40,11 @@ impl OpCode0501 {
             parser.write_dump(format_args!("\n[Change {}; KTUDB] XID: {}", field_num, self.xid));
         }
 
-        reader.skip_bytes(vector_header.fields_sizes[field_num] as usize - 20);
-        reader.align_up(4);
         Ok(())
     }
 
     pub fn ktubl(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(vector_header.fields_sizes[field_num] >= 24, "Size of field {} < 24", vector_header.fields_sizes[field_num]);
+        assert!(reader.data().len() >= 24, "Size of field {} < 24", reader.data().len());
 
         self.obj = reader.read_u32()?;
         self.data_obj = reader.read_u32()?;
@@ -50,7 +59,7 @@ impl OpCode0501 {
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("\n[Change {}; KTUBL - {}] OBJ: {} DATAOBJ: {}\nOPC: {}.{} SLT: {}\nFLG: {:016b}\n", 
-                    field_num, vector_header.fields_sizes[field_num], self.obj, self.data_obj, self.opc.0, self.opc.1, self.slt, self.flg));
+                    field_num, reader.data().len(), self.obj, self.data_obj, self.opc.0, self.opc.1, self.slt, self.flg));
 
             let tbl = ["NO", "YES"];
 
@@ -65,21 +74,18 @@ impl OpCode0501 {
             parser.write_dump(format_args!(" MULTI BLOCK UNDO MID  : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOMID  != 0) as usize]));
         }
 
-        reader.skip_bytes(vector_header.fields_sizes[field_num] as usize - 24);
-        reader.align_up(4);
         Ok(())
     }
 
     pub fn ktb_redo(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(vector_header.fields_sizes[field_num] >= 8, "Size of field {} < 8", vector_header.fields_sizes[field_num]);
-        let prev_cursor = reader.cursor();
+        assert!(reader.data().len() >= 8, "Size of field {} < 8", reader.data().len());
 
         let ktb_op = reader.read_u8()?;
         let flg = reader.read_u8()?;
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("\n[Change {}; KTBREDO - {}] OP: {}\n", 
-                    field_num, vector_header.fields_sizes[field_num], ktb_op));
+                    field_num, reader.data().len(), ktb_op));
         }
 
         if flg & 0x08 == 0 {
@@ -98,6 +104,14 @@ impl OpCode0501 {
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
                     parser.write_dump(format_args!("Op: F XID: {} UBA: {}\n", self.xid, uba));
+                } else {
+                    reader.skip_bytes(8);
+                }
+            },
+            2 => {
+                if parser.can_dump(1) {
+                    let uba = reader.read_uba()?;
+                    parser.write_dump(format_args!("Op: C UBA: {}\n", uba));
                 } else {
                     reader.skip_bytes(8);
                 }
@@ -121,62 +135,327 @@ impl OpCode0501 {
             },
         }
 
-        reader.skip_bytes(vector_header.fields_sizes[field_num] as usize - (reader.cursor() - prev_cursor));
-        reader.align_up(4);
+        Ok(())
+    }
+
+    pub fn kdo_opcode_irp(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+        assert!(reader.data().len() >= 48, "Size of field {} < 48", reader.data().len());
+
+        self.fb = reader.read_u8()?;
+        let lb = reader.read_u8()?;
+        self.cc = reader.read_u8()?;
+        let cki = reader.read_u8()?;
+        reader.skip_bytes(20);
+        let size_delt = reader.read_u16()?;
+        self.slot = reader.read_u16()?;
+        reader.skip_bytes(1);
+
+        self.nulls_offset = reader.cursor();
+
+        if parser.can_dump(1) {
+            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc));
+            parser.write_dump(format_args!("lb: {} cki: {}\n", lb, cki));
+        }
+
+        assert!(reader.data().len() >= 45 + ((self.cc as usize + 7) / 8), "Size of field {} < 26 + (cc + 7) / 8", reader.data().len());
+
+        Ok(())
+    }
+
+    pub fn kdo_opcode_drp(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+        assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
+
+        self.slot = reader.read_u16()?;
+        reader.skip_bytes(2);
+
+        if parser.can_dump(1) {
+            parser.write_dump(format_args!("SLOT: {}\n", self.slot));
+        }
+
+        Ok(())
+    }
+
+    pub fn kdo_opcode_lkr(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+        assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
+
+        self.slot = reader.read_u16()?;
+        reader.skip_bytes(2);
+
+        if parser.can_dump(1) {
+            parser.write_dump(format_args!("SLOT: {}\n", self.slot));
+        }
+
+        Ok(())
+    }
+
+    pub fn kdo_opcode_urp(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+        assert!(reader.data().len() >= 28, "Size of field {} < 28", reader.data().len());
+
+        self.fb = reader.read_u8()?;
+        let lock = reader.read_u8()?;
+        let ckix = reader.read_u8()?;
+        let tabn = reader.read_u8()?;
+        self.slot = reader.read_u16()?;
+        let ncol: u8 = reader.read_u8()?;
+        self.cc = reader.read_u8()?;
+        reader.skip_bytes(2);
+
+        self.nulls_offset = reader.cursor();
+
+        if parser.can_dump(1) {
+            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc));
+            parser.write_dump(format_args!("lock: {} ckix: {} tabn: {} ncol: {}\n", lock, ckix, tabn, ncol));
+        }
+
+        assert!(reader.data().len() >= 26 + ((self.cc as usize + 7) / 8), "Size of field {} < 26 + (cc + 7) / 8", reader.data().len());
+
+        Ok(())
+    }
+
+    pub fn kdo_opcode_qm(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+        assert!(reader.data().len() >= 24, "Size of field {} < 24", reader.data().len());
+
+        let tabn = reader.read_u8()?;
+        let lock = reader.read_u8()?;
+        self.nrow = reader.read_u8()?;
+        reader.skip_bytes(1);
+
+        if parser.can_dump(1) {
+            parser.write_dump(format_args!("NROW: {}\n", self.nrow));
+            parser.write_dump(format_args!("lock: {} tabn: {}\n", lock, tabn));
+        }
+
         Ok(())
     }
 
     pub fn ktb_opcode(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(vector_header.fields_sizes[field_num] >= 16, "Size of field {} < 16", vector_header.fields_sizes[field_num]);
+        assert!(reader.data().len() >= 16, "Size of field {} < 16", reader.data().len());
 
+        self.bdba = reader.read_u32()?;
+        reader.skip_bytes(6);
+        self.op = reader.read_u8()?;
+        self.flags = reader.read_u8()?;
+        reader.skip_bytes(4);
 
-        
+        if parser.can_dump(1) {
+            let tbl = ["000", "IUR", "IRP", "DRP", "LKR", "URP", "ORP", "MFC", "CFA", "CKI", "SKL", "QMI", "QMD", "013", "DSC", "015", "LMN", "LLB", "018", "019", "SHK", "021", "CMP", "DCU", "MRK"];
+            parser.write_dump(format_args!("\n[Change {}; KTBOPCODE - {}] OP: {}\n", field_num, reader.data().len(), tbl.get((self.op & 0x1F) as usize).or(Some(&"Unknown operation")).unwrap()));
+            parser.write_dump(format_args!("BDBA: {} OP: {} FLAGS: {}\n", self.bdba, self.op, self.flags));
+        }
 
-        reader.skip_bytes(vector_header.fields_sizes[field_num] as usize);
-        reader.align_up(4);
+        match self.op & 0x1F {
+            2 => {
+                self.kdo_opcode_irp(parser, vector_header, reader, field_num)?;
+            },
+            3 => {
+                self.kdo_opcode_drp(parser, vector_header, reader, field_num)?;
+            },
+            4 => {
+                self.kdo_opcode_lkr(parser, vector_header, reader, field_num)?;
+            },
+            5 => {
+                self.kdo_opcode_urp(parser, vector_header, reader, field_num)?;
+            },
+            6 => std::unimplemented!("{}", self.op & 0x1F),
+            8 => std::unimplemented!("{}", self.op & 0x1F),
+            9 => std::unimplemented!("{}", self.op & 0x1F),
+            11 => {
+                self.kdo_opcode_qm(parser, vector_header, reader, field_num)?;
+            }
+            12 => std::unimplemented!("{}", self.op & 0x1F),
+            _ => std::unimplemented!("{}", self.op & 0x1F),
+        }
+
         Ok(())
     }
 
-    pub fn opc0b01(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(vector_header.fields_sizes[field_num] >= 8, "Size of field {} < 8", vector_header.fields_sizes[field_num]);
-        let prev_cursor = reader.cursor();
-
+    pub fn supp_log(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, mut field_num : usize) -> Result<(), OLRError> {
         
+        while field_num < vector_header.fields_count as usize {
+            reader.skip_bytes(vector_header.fields_sizes[field_num] as usize);
+            reader.align_up(4);
+            field_num += 1;
+        }
 
-        reader.skip_bytes(vector_header.fields_sizes[field_num] as usize - (reader.cursor() - prev_cursor));
-        reader.align_up(4);
+        Ok(())
+    }
+
+    pub fn opc0b01(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader, mut field_num : usize) -> Result<(), OLRError> {
+
+        let mut ktb_opcode_reader = reader.next_field_reader()
+                .ok_or(olr_perr!("expect ktb opcode field"))?;
+    
+        self.ktb_opcode(parser, vector_header, &mut ktb_opcode_reader, field_num)?;
+        
+        field_num += 1;
+
+        match self.op & 0x1F {
+            2 => {
+                if self.cc > 0 {
+                    let mut bits : u8 = 1;
+                    let mut nulls: u8 = ktb_opcode_reader.read_u8()?;
+
+                    for _ in 0 .. self.cc {
+                        match (nulls & bits == 0, parser.can_dump(1)) {
+                            (true, true) => {
+                                let column_reader = reader.next_field_reader().unwrap();
+                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", column_reader.data().len(), column_reader.data()));
+                            },
+                            (true, false) => {
+                                let _ = reader.next_field_reader().unwrap();
+                            },
+                            (false, true) => {
+                                parser.write_dump(format_args!("Col: NULL\n"));
+                            },
+                            (false, false) => {},
+                        }
+
+                        bits <<= 1;
+                        if bits == 0 {
+                            bits = 1;
+                            nulls = ktb_opcode_reader.read_u8()?;
+                        }
+
+                        field_num += 1;
+                    }
+                }
+
+                if self.op & 64 != 0 {
+                    std::unimplemented!("{}", self.op & 0x1F);
+                }
+
+                // self.supp_log(parser, vector_header, reader, field_num)?;
+            },
+            3 => {
+                if self.op & 64 != 0 {
+                    std::unimplemented!("{}", self.op & 0x1F);
+                }
+
+                // self.supp_log(parser, vector_header, reader, field_num)?;
+            },
+            5 => {
+                if self.flags & 128 != 0 {
+                    std::unimplemented!();
+                } else {
+                    let _ = reader.next_field_reader().unwrap(); // 4 bytes size
+
+                    let mut bits : u8 = 1;
+                    let mut nulls: u8 = ktb_opcode_reader.read_u8()?;
+
+                    'col_dumps: for _ in 0 .. self.cc {
+                        if nulls & bits == 0 {
+                            let column_reader = loop {
+                                let column_reader = reader.next_field_reader();
+
+                                if column_reader.is_none() {
+                                    break 'col_dumps;
+                                }
+                                
+                                if column_reader.unwrap().data().len() > 0 {
+                                    break column_reader.unwrap();
+                                }
+                            };
+
+                            if parser.can_dump(1) {
+                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", column_reader.data().len(), column_reader.data()));
+                            }
+                        } else {
+                            if parser.can_dump(1) {
+                                parser.write_dump(format_args!("Col: NULL\n"));
+                            }
+                        }
+
+                        bits <<= 1;
+                        if bits == 0 {
+                            bits = 1;
+                            nulls = ktb_opcode_reader.read_u8()?;
+                        }
+                    }
+                }
+
+                if self.op & 64 != 0 {
+                    std::unimplemented!();
+                }
+
+                // self.supp_log(parser, vector_header, reader, field_num + 1)?;
+            },
+            11 => {
+                let mut sizes_reader = reader.next_field_reader().unwrap();
+                let mut data_reader = reader.next_field_reader().unwrap();
+
+                if parser.can_dump(1) {
+                    for _ in 0 .. self.nrow {
+                        let fb = data_reader.read_u8()?;
+                        let lb = data_reader.read_u8()?;
+                        let jcc = data_reader.read_u8()?;
+                        let tl = sizes_reader.read_u16()?;
+
+                        parser.write_dump(format_args!("FB: {} LB: {} TL: {} JCC: {}\n", fb, lb, tl, jcc));
+
+                        if self.op & 64 != 0 {
+                            if parser.version().unwrap() < constants::REDO_VERSION_12_2 {
+                                data_reader.skip_bytes(6);
+                            } else {
+                                data_reader.skip_bytes(8);
+                            }
+                        }
+
+                        for _ in 0 .. jcc {
+                            let mut size: u16 = data_reader.read_u8()? as u16;
+                            let is_null: bool = size == 0xFF;
+
+                            if size == 0xFE {
+                                size = data_reader.read_u16()?;
+                            }
+
+                            if !is_null {
+                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", size, &data_reader.data()[data_reader.cursor() .. data_reader.cursor() + size as usize] ));
+                                data_reader.skip_bytes(size as usize);
+                            }
+                        }
+                    }
+                }
+
+                // self.supp_log(parser, vector_header, reader, field_num)?;
+            },
+            4 => {
+                // self.supp_log(parser, vector_header, reader, field_num)?;
+            },
+            _ => std::unimplemented!("{}", self.op & 0x1F),
+        }
+
         Ok(())
     }
 }
 
 impl VectorParser for OpCode0501 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader) -> Result<(), OLRError> {
-        
+    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
         let mut result = OpCode0501::default();
 
-        result.ktudb(parser, vector_header, reader, 0)?;
+        if let Some(mut field_reader) = reader.next_field_reader() {
+            result.ktudb(parser, vector_header, &mut field_reader, 0)?;
+        } else {
+            return olr_perr!("Expect ktudb field");
+        }
 
-        if vector_header.fields_count < 2 {
+        if let Some(mut field_reader) = reader.next_field_reader() {
+            result.ktubl(parser, vector_header, &mut field_reader, 1)?;
+        } else {
+            return Ok(())
+        }
+
+        if result.flg & (constants::FLG_MULTIBLOCKUNDOHEAD | constants::FLG_MULTIBLOCKUNDOTAIL | constants::FLG_MULTIBLOCKUNDOMID) != 0 
+            || reader.eof() 
+        {
             return Ok(());
         }
 
-        result.ktubl(parser, vector_header, reader, 1)?;
-
-        if result.flg & (constants::FLG_MULTIBLOCKUNDOHEAD | constants::FLG_MULTIBLOCKUNDOTAIL | constants::FLG_MULTIBLOCKUNDOMID) != 0 {
-            return Ok(());
-        }
-
-        if vector_header.fields_count < 3 {
-            return Ok(());
-        }
-
-        std::unimplemented!();
         match result.opc {
             (11, 1) => {
-                result.ktb_redo(parser, vector_header, reader, 2)?;
-
-                if vector_header.fields_count < 4 {
-                    return Ok(());
+                if let Some(mut field_reader) = reader.next_field_reader() {
+                    result.ktb_redo(parser, vector_header, &mut field_reader, 2)?;
+                } else {
+                    return Ok(())
                 }
 
                 result.opc0b01(parser, vector_header, reader, 3)?;

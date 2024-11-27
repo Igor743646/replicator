@@ -1,5 +1,5 @@
-use super::{verify_fields_count, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}}};
+use super::VectorParser;
+use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
 
 #[derive(Default)]
 pub struct OpCode0504 {
@@ -9,7 +9,7 @@ pub struct OpCode0504 {
 
 impl OpCode0504 {
     pub fn ktucm(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(vector_header.fields_sizes[field_num] >= 20, "Size of field {} < 20", vector_header.fields_sizes[field_num]);
+        assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
 
         let xid_usn = (vector_header.class - 15) / 2;
         let xid_slot = reader.read_u16()?;
@@ -29,13 +29,11 @@ impl OpCode0504 {
             parser.write_dump(format_args!("\n[Change {}; KTUCM] XID: {}\nFlag: {:08b}\nSRT: {} STA: {}\n", field_num, self.xid, self.flg, srt, sta));
         }
 
-        reader.skip_bytes(vector_header.fields_sizes[field_num] as usize - 20);
-        reader.align_up(4);
         Ok(())
     }
 
     pub fn ktucf(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(vector_header.fields_sizes[field_num] >= 16, "Size of field {} < 16", vector_header.fields_sizes[field_num]);
+        assert!(reader.data().len() >= 16, "Size of field {} < 16", reader.data().len());
 
         if parser.can_dump(1) {
             let uba = reader.read_u64()?;
@@ -48,35 +46,29 @@ impl OpCode0504 {
             reader.skip_bytes(16);
         }
         
-        reader.skip_bytes(vector_header.fields_sizes[field_num] as usize - 16);
-        reader.align_up(4);
         Ok(())
     }
 }
 
 impl VectorParser for OpCode0504 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader) -> Result<(), OLRError> {
-        verify_fields_count(reader, vector_header, 4)?;
-
+    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
         let mut result = OpCode0504::default();
 
-        result.ktucm(parser, vector_header, reader, 0)?;
+        if let Some(mut field_reader) = reader.next_field_reader() {
+            result.ktucm(parser, vector_header, &mut field_reader, 0)?;
+        } else {
+            return olr_perr!("Expect ktucm field");
+        }
 
         if vector_header.fields_count < 2 {
             return Ok(());
         }
         
         if result.flg & constants::FLAG_KTUCF_OP0504 != 0 {
-            result.ktucf(parser, vector_header, reader, 1)?;
-
-            for sz in 2 .. vector_header.fields_count {
-                reader.skip_bytes(sz as usize);
-                reader.align_up(4);
-            }
-        } else {
-            for sz in 1 .. vector_header.fields_count {
-                reader.skip_bytes(sz as usize);
-                reader.align_up(4);
+            if let Some(mut field_reader) = reader.next_field_reader() {
+                result.ktucf(parser, vector_header, &mut field_reader, 1)?;
+            } else {
+                return olr_perr!("Expect ktucf field");
             }
         }
 

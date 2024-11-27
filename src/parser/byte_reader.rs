@@ -14,6 +14,7 @@ pub enum Endian {
     NativEndian,
 }
 
+#[derive(Copy, Clone)]
 pub struct ByteReader<'a> {
     data : &'a [u8],
     cursor : usize,
