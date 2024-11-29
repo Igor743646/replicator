@@ -9,7 +9,7 @@ pub struct OpCode0504 {
 
 impl OpCode0504 {
     pub fn ktucm(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
+        assert!(reader.data().len() == 20, "Size of field {} != 20", reader.data().len());
 
         let xid_usn = (vector_header.class - 15) / 2;
         let xid_slot = reader.read_u16()?;
@@ -32,8 +32,8 @@ impl OpCode0504 {
         Ok(())
     }
 
-    pub fn ktucf(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() >= 16, "Size of field {} < 16", reader.data().len());
+    pub fn ktucf(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+        assert!(reader.data().len() == 16, "Size of field {} != 16", reader.data().len());
 
         if parser.can_dump(1) {
             let uba = reader.read_u64()?;
@@ -52,9 +52,11 @@ impl OpCode0504 {
 
 impl VectorParser for OpCode0504 {
     fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
+        assert!(vector_header.fields_count > 1 && vector_header.fields_count < 4, "Opcode: 5.4 Count of field not in [2; 3]. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
+
         let mut result = OpCode0504::default();
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.ktucm(parser, vector_header, &mut field_reader, 0)?;
         } else {
             return olr_perr!("Expect ktucm field");
@@ -65,8 +67,8 @@ impl VectorParser for OpCode0504 {
         }
         
         if result.flg & constants::FLAG_KTUCF_OP0504 != 0 {
-            if let Some(mut field_reader) = reader.next_field_reader() {
-                result.ktucf(parser, vector_header, &mut field_reader, 1)?;
+            if let Some(mut field_reader) = reader.next() {
+                result.ktucf(parser, &mut field_reader, 1)?;
             } else {
                 return olr_perr!("Expect ktucf field");
             }

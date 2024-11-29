@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::warn;
 
 use super::VectorParser;
 use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
@@ -282,7 +282,7 @@ impl OpCode0501 {
 
     pub fn opc0b01(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader, mut field_num : usize) -> Result<(), OLRError> {
 
-        let mut ktb_opcode_reader = reader.next_field_reader()
+        let mut ktb_opcode_reader = reader.next()
                 .ok_or(olr_perr!("expect ktb opcode field"))?;
     
         self.ktb_opcode(parser, vector_header, &mut ktb_opcode_reader, field_num)?;
@@ -298,11 +298,11 @@ impl OpCode0501 {
                     for _ in 0 .. self.cc {
                         match (nulls & bits == 0, parser.can_dump(1)) {
                             (true, true) => {
-                                let column_reader = reader.next_field_reader().unwrap();
+                                let column_reader = reader.next().unwrap();
                                 parser.write_dump(format_args!("Col [{}]: {:02X?}\n", column_reader.data().len(), column_reader.data()));
                             },
                             (true, false) => {
-                                let _ = reader.next_field_reader().unwrap();
+                                let _ = reader.next().unwrap();
                             },
                             (false, true) => {
                                 parser.write_dump(format_args!("Col: NULL\n"));
@@ -337,7 +337,7 @@ impl OpCode0501 {
                 if self.flags & 128 != 0 {
                     std::unimplemented!();
                 } else {
-                    let _ = reader.next_field_reader().unwrap(); // 4 bytes size
+                    let _ = reader.next().unwrap(); // 4 bytes size
 
                     let mut bits : u8 = 1;
                     let mut nulls: u8 = ktb_opcode_reader.read_u8()?;
@@ -345,7 +345,7 @@ impl OpCode0501 {
                     'col_dumps: for _ in 0 .. self.cc {
                         if nulls & bits == 0 {
                             let column_reader = loop {
-                                let column_reader = reader.next_field_reader();
+                                let column_reader = reader.next();
 
                                 if column_reader.is_none() {
                                     break 'col_dumps;
@@ -380,8 +380,8 @@ impl OpCode0501 {
                 // self.supp_log(parser, vector_header, reader, field_num + 1)?;
             },
             11 => {
-                let mut sizes_reader = reader.next_field_reader().unwrap();
-                let mut data_reader = reader.next_field_reader().unwrap();
+                let mut sizes_reader = reader.next().unwrap();
+                let mut data_reader = reader.next().unwrap();
 
                 if parser.can_dump(1) {
                     for _ in 0 .. self.nrow {
@@ -432,13 +432,13 @@ impl VectorParser for OpCode0501 {
     fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
         let mut result = OpCode0501::default();
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.ktudb(parser, vector_header, &mut field_reader, 0)?;
         } else {
             return olr_perr!("Expect ktudb field");
         }
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.ktubl(parser, vector_header, &mut field_reader, 1)?;
         } else {
             return Ok(())
@@ -452,7 +452,7 @@ impl VectorParser for OpCode0501 {
 
         match result.opc {
             (11, 1) => {
-                if let Some(mut field_reader) = reader.next_field_reader() {
+                if let Some(mut field_reader) = reader.next() {
                     result.ktb_redo(parser, vector_header, &mut field_reader, 2)?;
                 } else {
                     return Ok(())

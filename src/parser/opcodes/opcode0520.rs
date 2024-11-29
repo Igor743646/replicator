@@ -1,5 +1,5 @@
 use super::VectorParser;
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
+use crate::{common::{constants, errors::OLRError}, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
 
 #[derive(Default)]
 pub struct OpCode0520 {
@@ -113,37 +113,39 @@ impl OpCode0520 {
 
 impl VectorParser for OpCode0520 {
     fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
+        assert!(vector_header.fields_count == 8, "Opcode: 5.4 Count of field != 8. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
+
         let mut result = OpCode0520::default();
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.session_attribute_1(parser, &mut field_reader, 0)?;
         }
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.session_attribute_2(parser, &mut field_reader, 1)?;
         }
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.session_attribute_3(parser, &mut field_reader, 2)?;
         }
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.session_attribute_4(parser, &mut field_reader, 3)?;
         }
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.session_attribute_5(parser, &mut field_reader, 4)?;
         }
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.session_attribute_6(parser, &mut field_reader, 5)?;
         }
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.session_attribute_7(parser, &mut field_reader, 6)?;
         }
 
-        if let Some(mut field_reader) = reader.next_field_reader() {
+        if let Some(mut field_reader) = reader.next() {
             result.session_attribute_8(parser, &mut field_reader, 7)?;
         }
         

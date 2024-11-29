@@ -20,7 +20,15 @@ impl<'a> VectorReader<'a> {
         }
     }
 
-    pub fn next_field_reader(&mut self) -> Option<ByteReader<'a>> {
+    pub fn eof(&self) -> bool {
+        self.current_field >= self.header.fields_count as usize
+    }
+}
+
+impl<'a> Iterator for VectorReader<'a> {
+    type Item = ByteReader<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         if self.current_field >= self.header.fields_count as usize {
             None
         } else {
@@ -30,9 +38,5 @@ impl<'a> VectorReader<'a> {
             self.current_field += 1;
             Some(reader)
         }
-    }
-
-    pub fn eof(&self) -> bool {
-        self.current_field >= self.header.fields_count as usize
     }
 }
