@@ -1,0 +1,18 @@
+@startuml OpCode0502
+
+rectangle "Opcode 5.2" as n_1 {
+    node "ktudh 32 bytes" as n_1_1 #palegreen
+    node "kteop 36 bytes" as n_1_2
+    node "pdb 4 bytes" as n_1_3
+    circle end as n_1_0
+
+    n_1_1 --> n_1_2
+    n_1_1 --> n_1_3 
+    n_1_2 --> n_1_3
+
+    n_1_1 --> n_1_0
+    n_1_2 --> n_1_0
+    n_1_3 --> n_1_0
+}
+
+@enduml

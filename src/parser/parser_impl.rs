@@ -1,7 +1,8 @@
 use core::fmt;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
-use std::fs::{File, Metadata};
-use std::io::Write;
+use std::fs::{File, Metadata, OpenOptions};
+use std::io::{Read, Seek, Write};
 use std::ops::DerefMut;
 use std::process::exit;
 use std::sync::Arc;
@@ -552,7 +553,7 @@ impl RecordAnalizer for Parser {
             self.write_dump(format_args!("########################################################\n"));
             self.write_dump(format_args!("\nHeader: {}", record_header));
         }
-        
+
         while !reader.eof() {
             let vector_header: RedoVectorHeader = reader.read_redo_vector_header(version)?;
             reader.align_up(4);

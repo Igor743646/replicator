@@ -1,0 +1,14 @@
+@startuml OpCode0504
+
+rectangle "Opcode 5.4" as n_2 {
+    node "ktucm 20 bytes" as n_2_1 #palegreen
+    node "ktucf 16 bytes" as n_2_2
+    circle end as n_2_0
+
+    n_2_1 --> n_2_2
+    
+    n_2_1 --> n_2_0
+    n_2_2 --> n_2_0
+}
+
+@enduml

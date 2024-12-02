@@ -52,7 +52,7 @@ impl OpCode0504 {
 
 impl VectorParser for OpCode0504 {
     fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
-        assert!(vector_header.fields_count > 1 && vector_header.fields_count < 4, "Opcode: 5.4 Count of field not in [2; 3]. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
+        assert!(vector_header.fields_count > 1 && vector_header.fields_count < 5, "Opcode: 5.4 Count of field not in [2; 4]. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
 
         let mut result = OpCode0504::default();
 

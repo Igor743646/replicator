@@ -1,0 +1,78 @@
+@startuml OpCode0501
+skinparam linetype ortho
+node "ktudb 20 bytes" as n_1 #palegreen
+node "ktub 24/28/76 bytes" as n_2 #palegreen
+
+package "opc = 0x0A16" as p_1 {
+    node "ktbredo 4/8 + 8/24/16/... bytes" as n_p_1_1 #palegreen
+    node "kdilk ? bytes" as n_p_1_2
+}
+
+package "opc = 0x0B01" as p_2 {
+    node "ktbredo 4/8 + 8/24/16/... bytes" as n_p_2_1 #palegreen
+    node "kdoopcode ? bytes" as n_p_2_2 #palegreen
+    node "suplogs" as n_p_2_3 #palegreen
+
+    package "op = URP" as p_2_1 {
+        node "sizes" as n_p_2_1_1
+        node "column 1" as n_p_2_1_2 #palegreen
+        node "column n" as n_p_2_1_3 #palegreen
+        node "rowdeps" as n_p_2_1_4
+        n_p_2_1_1 --> n_p_2_1_2
+        n_p_2_1_2 .-> n_p_2_1_3
+        n_p_2_1_3 --> n_p_2_1_4
+        n_p_2_1_4 --> n_p_2_3
+    }
+
+    package "op = DRP" as p_2_2 {
+        node "rowdeps" as n_p_2_2_1
+        n_p_2_2_1 --> n_p_2_3
+    }
+
+    package "op = IRP || op = ORP" as p_2_3 {
+        node "column 1" as n_p_2_3_1 #palegreen
+        node "column n" as n_p_2_3_2 #palegreen
+        node "rowdeps" as n_p_2_3_3
+        n_p_2_3_1 .-> n_p_2_3_2
+        n_p_2_3_2 --> n_p_2_3_3
+        n_p_2_3_3 ---> n_p_2_3
+    }
+
+    package "op = QMI" as p_2_4 {
+        node "sizes" as n_p_2_4_1
+        node "rows" as n_p_2_4_2 #palegreen
+        
+        n_p_2_4_1 --> n_p_2_4_2
+        n_p_2_4_2 ----> n_p_2_3
+    }
+
+    n_p_2_2 --> n_p_2_1_1
+    n_p_2_2 --> n_p_2_2_1
+    n_p_2_2 --> n_p_2_3_1
+    n_p_2_2 --> n_p_2_4_1
+    n_p_2_2 --> n_p_2_3 : "op = LMN\nop = LKR\nop = CFA"
+}
+
+package "opc = 0x1A01" as p_3 {
+    node "ktbredo 4/8 + 8/24/16/... bytes" as n_p_3_1 #palegreen
+    node "kdlicommon ? bytes" as n_p_3_2 #palegreen
+}
+
+package "opc = 0x0E08" as p_4 {
+    node "kteoputrn 4 bytes" as n_p_4_1
+}
+
+n_1 --> n_2
+n_2 --> n_p_4_1
+n_2 --> n_p_1_1
+n_2 --> n_p_2_1
+n_2 --> n_p_3_1
+
+n_p_1_1 --> n_p_1_2
+
+n_p_2_1 --> n_p_2_2
+
+n_p_3_1 --> n_p_3_2
+
+
+@enduml

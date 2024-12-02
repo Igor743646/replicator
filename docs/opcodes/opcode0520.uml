@@ -1,0 +1,24 @@
+@startuml OpCode0520
+
+rectangle "Opcode 5.20" as n_3 {
+    node "attr1 4/8 bytes" as n_3_1 #palegreen
+    node "attr2 ? bytes" as n_3_2 #palegreen
+    node "attr3 6 bytes" as n_3_3 #palegreen
+    node "attr4 4 bytes" as n_3_4 #palegreen
+    node "attr5 4 bytes" as n_3_5 #palegreen
+    node "attr6 ? bytes" as n_3_6 #palegreen
+    node "attr7 ? bytes" as n_3_7 #palegreen
+    node "attr8 ? bytes" as n_3_8 #palegreen
+    circle end as n_3_0
+
+    n_3_1 -> n_3_2
+    n_3_2 --> n_3_3
+    n_3_3 -> n_3_4
+    n_3_4 --> n_3_5
+    n_3_5 -> n_3_6
+    n_3_6 --> n_3_7
+    n_3_7 -> n_3_8
+    n_3_8 -> n_3_0
+}
+
+@enduml
