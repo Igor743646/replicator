@@ -21,6 +21,7 @@ use crate::parser::opcodes::opcode0501::OpCode0501;
 use crate::parser::opcodes::opcode0502::OpCode0502;
 use crate::parser::opcodes::opcode0504::OpCode0504;
 use crate::parser::opcodes::opcode0520::OpCode0520;
+use crate::parser::opcodes::opcode1102::OpCode1102;
 use crate::parser::opcodes::VectorParser;
 use crate::parser::record_analizer::RecordAnalizer;
 use crate::parser::record_reader::VectorReader;
@@ -581,6 +582,7 @@ impl RecordAnalizer for Parser {
                 (5, 2) => OpCode0502::parse(self, &vector_header, &mut vec_reader)?,
                 (5, 4) => OpCode0504::parse(self, &vector_header, &mut vec_reader)?,
                 (5, 20) => OpCode0520::parse(self, &vector_header, &mut vec_reader)?,
+                (11, 2) => OpCode1102::parse(self, &vector_header, &mut vec_reader)?,
                 (a, b) => {
                     match (a, b) {
                         (11, 17) => (),

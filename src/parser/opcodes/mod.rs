@@ -5,6 +5,7 @@ pub mod opcode0502;
 pub mod opcode0520;
 pub mod opcode0504;
 pub mod opcode0501;
+pub mod opcode1102;
 
 pub trait VectorParser {
     fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError>;

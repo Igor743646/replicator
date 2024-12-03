@@ -20,6 +20,7 @@ pub struct OpCode0501 {
 
     pub fb : u8,
     pub cc : u8,
+    pub size_delt : u16,
     pub nulls_offset : usize,
 
     pub nrow : u8,
@@ -95,7 +96,7 @@ impl OpCode0501 {
 
         match ktb_op & 0x0F {
             constants::KTBOP_F => {
-                assert!(reader.data().len() - reader.cursor() == 16, "Size of field {} != 16", reader.data().len());
+                assert!(reader.data().len() - reader.cursor() >= 16, "Size of field {} < 16", reader.data().len());
 
                 let usn = reader.read_u16()?;
                 let slt = reader.read_u16()?;
@@ -108,22 +109,20 @@ impl OpCode0501 {
                 }
             },
             constants::KTBOP_C => {
-                assert!(reader.data().len() - reader.cursor() == 8, "Size of field {} != 8", reader.data().len());
+                assert!(reader.data().len() - reader.cursor() >= 8, "Size of field {} < 8", reader.data().len());
 
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
                     parser.write_dump(format_args!("Op: C UBA: {}\n", uba));
                 }
             },
-            constants::KTBOP_Z => { 
-                assert!(reader.data().len() - reader.cursor() == 0, "Size of field {} != 0", reader.data().len());
-
+            constants::KTBOP_Z => {
                 if parser.can_dump(1) {
                     parser.write_dump(format_args!("Op: Z\n"));
                 }
             },
             constants::KTBOP_L => {
-                assert!(reader.data().len() - reader.cursor() == 24, "Size of field {} != 24", reader.data().len());
+                assert!(reader.data().len() - reader.cursor() >= 24, "Size of field {} < 24", reader.data().len());
 
                 if parser.can_dump(1) {
                     let usn = reader.read_u16()?;
@@ -152,7 +151,7 @@ impl OpCode0501 {
         self.cc = reader.read_u8()?;
         let cki = reader.read_u8()?;
         reader.skip_bytes(20);
-        let size_delt = reader.read_u16()?;
+        self.size_delt = reader.read_u16()?;
         self.slot = reader.read_u16()?;
         reader.skip_bytes(1);
 
@@ -160,7 +159,21 @@ impl OpCode0501 {
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc));
-            parser.write_dump(format_args!("lb: {} cki: {}\n", lb, cki));
+            parser.write_dump(format_args!("lb: {} cki: {} size_delt: {}\n", lb, cki, self.size_delt));
+            parser.write_dump(format_args!("nulls: "));
+
+            let mut nulls = reader.read_u8()?;
+            for i in 0 .. self.cc {
+                let bits = 1u8 << (i & 0b111);
+
+                parser.write_dump(format_args!("{}", (nulls & bits != 0) as u8));
+                
+                if bits == 0b10000000 {
+                    nulls = reader.read_u8()?;
+                }
+            }
+            parser.write_dump(format_args!("\n"));
+            reader.set_cursor(self.nulls_offset)?;
         }
 
         assert!(reader.data().len() >= 45 + ((self.cc as usize + 7) / 8), "Size of field {} < 26 + (cc + 7) / 8", reader.data().len());
@@ -328,43 +341,36 @@ impl OpCode0501 {
         Ok(())
     }
 
-    pub fn opc0b01(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader, mut field_num : usize) -> Result<(), OLRError> {
+    pub fn opc0b01(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader, field_num : usize) -> Result<(), OLRError> {
 
         let mut ktb_opcode_reader = reader.next()
                 .ok_or(olr_perr!("expect ktb opcode field"))?;
     
         self.kdo_opcode(parser, vector_header, &mut ktb_opcode_reader, field_num)?;
-        
-        field_num += 1;
 
         match self.op & 0x1F {
             constants::OP_IRP | constants::OP_ORP => {
                 if self.cc > 0 {
-                    let mut bits : u8 = 1;
-                    let mut nulls: u8 = ktb_opcode_reader.read_u8()?;
+                    if parser.can_dump(1) {
+                        let mut nulls: u8 = 0;
+                        for mask in (0 .. self.cc).map(|i| 1u8 << (i & 0b111)) {
+                            if mask == 1 {
+                                nulls = ktb_opcode_reader.read_u8()?;
+                            }
 
-                    for _ in 0 .. self.cc {
-                        match (nulls & bits == 0, parser.can_dump(1)) {
-                            (true, true) => {
-                                let column_reader = reader.next().unwrap();
+                            let column_reader = reader.next().unwrap();
+
+                            if nulls & mask == 0 {
                                 parser.write_dump(format_args!("Col [{}]: {:02X?}\n", column_reader.data().len(), column_reader.data()));
-                            },
-                            (true, false) => {
-                                let _ = reader.next().unwrap();
-                            },
-                            (false, true) => {
+                            } else {
+                                assert!(column_reader.data().len() == 0, "Size of field {} != 0", column_reader.data().len());
                                 parser.write_dump(format_args!("Col: NULL\n"));
-                            },
-                            (false, false) => {},
+                            }
                         }
-
-                        bits <<= 1;
-                        if bits == 0 {
-                            bits = 1;
-                            nulls = ktb_opcode_reader.read_u8()?;
+                    } else {
+                        for _ in 0 .. self.cc {
+                            let _ = reader.next().unwrap();
                         }
-
-                        field_num += 1;
                     }
                 }
 
