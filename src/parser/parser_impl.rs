@@ -616,18 +616,18 @@ impl RecordAnalizer for Parser {
                 .sum();
 
             let mut vec_reader = VectorReader::new(
-                &vector_header, 
+                vector_header, 
                 &reader.data()[reader.cursor() .. reader.cursor() + vector_body_size]
             );
 
             reader.skip_bytes(vector_body_size);
 
-            let vector_info = match vector_header.op_code {
-                (5, 1) => OpCode0501::parse(self, &vector_header, &mut vec_reader)?,
-                (5, 2) => OpCode0502::parse(self, &vector_header, &mut vec_reader)?,
-                (5, 4) => OpCode0504::parse(self, &vector_header, &mut vec_reader)?,
-                (5, 20) => OpCode0520::parse(self, &vector_header, &mut vec_reader)?,
-                (11, 2) => OpCode1102::parse(self, &vector_header, &mut vec_reader)?,
+            let vector_info = match vec_reader.header.op_code {
+                (5, 1) => OpCode0501::parse(self, vec_reader)?,
+                (5, 2) => OpCode0502::parse(self, vec_reader)?,
+                (5, 4) => OpCode0504::parse(self, vec_reader)?,
+                (5, 20) => OpCode0520::parse(self, vec_reader)?,
+                (11, 2) => OpCode1102::parse(self, vec_reader)?,
                 (a, b) => {
                     warn!("Opcode: {}.{} not implemented", a, b); 
                     continue;
@@ -635,11 +635,53 @@ impl RecordAnalizer for Parser {
             };
             vector_info_pull.push_back(vector_info);
             
+            static mut OUTPUT : bool = false;
+
             if vector_info_pull.len() == 2 {
+
+                match (vector_info_pull.get(0).unwrap(), vector_info_pull.get(1).unwrap()) {
+                    (VectorInfo::OpCode0501(opcode0501), VectorInfo::OpCode1102(opcode1102)) => {
+                        let mut output_file = if unsafe { OUTPUT } {
+                            OpenOptions::new().write(true).append(true).open("out.txt").unwrap()
+                        } else {
+                            unsafe { OUTPUT = true; }
+                            OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap()
+                        };
+
+                        let value = json!({
+                            "OP" : "insert",
+                            "SCN": record.scn.to_string(),
+                            "TIMESTAMP": record.timestamp.to_string(),
+                            "XID": opcode0501.xid.to_string(),
+                            "DATA_OBJ": opcode0501.data_obj,
+                        });
+
+                        output_file.write(value.to_string().as_bytes()).unwrap();
+                        output_file.write(b"\n").unwrap();
+                    },
+                    (a, b) => {
+                        let mut output_file = if unsafe { OUTPUT } {
+                            OpenOptions::new().write(true).append(true).open("out.txt").unwrap()
+                        } else {
+                            unsafe { OUTPUT = true; }
+                            OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap()
+                        };
+
+                        // let value = json!({
+                        //     "OP" : "start",
+                        //     "SCN": record.scn.to_string(),
+                        //     "TIMESTAMP": record.timestamp.to_string(),
+                        //     "XID": begin.xid.to_string(),
+                        // });
+
+                        output_file.write(format!("{} {}", a, b).as_bytes()).unwrap();
+                        output_file.write(b"\n").unwrap();
+                    }
+                }
+
                 vector_info_pull.clear();
             }
 
-            static mut OUTPUT : bool = false;
             if vector_info_pull.len() == 1 {
 
                 match vector_info_pull.front().unwrap() {

@@ -1,17 +1,56 @@
 use super::{VectorInfo, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
+use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
-#[derive(Default, Debug)]
-pub struct OpCode0502 {
+#[derive(Debug)]
+pub struct OpCode0502<'a> {
     pub xid : TypeXid,
     pub flg : u16,
+
+    reader : VectorReader<'a>,
 }
 
-impl OpCode0502 {
-    pub fn ktudh(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+impl<'a> OpCode0502<'a> {
+    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self, OLRError> {
+        let mut res = Self {
+            xid : Default::default(),
+            flg : Default::default(),
+            reader,
+        };
+        res.init(parser)?;
+        Ok(res)
+    }
+
+    fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
+        if self.reader.header.fields_count > 3 {
+            return olr_perr!("Opcode: 5.2 Count of field > 3. Dump: {}", self.reader.by_ref().map(|x| {x.to_hex_dump()}).collect::<String>());
+        }
+
+        match self.reader.next() {
+            Some(mut field_reader) => self.ktudh(parser, &mut field_reader, 0),
+            None => olr_perr!("Expect ktudh field")
+        }?;
+
+        if parser.version().unwrap() >= constants::REDO_VERSION_12_1 && parser.can_dump(1) {
+            if let Some(mut field_reader) = self.reader.next() {
+                if field_reader.data().len() == 4 {
+                    self.pdb(parser, &mut field_reader, 1)?;
+                } else {
+                    self.kteop(parser, &mut field_reader, 1)?;
+
+                    if let Some(mut field_reader) = self.reader.next() {
+                        self.pdb(parser, &mut field_reader, 2)?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn ktudh(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() == 32, "Size of field {} != 32", reader.data().len());
 
-        let xid_usn = (vector_header.class - 15) / 2;
+        let xid_usn = (self.reader.header.class - 15) / 2;
         let xid_slot = reader.read_u16()?;
         reader.skip_bytes(2);
         let xid_seq = reader.read_u32()?;
@@ -29,7 +68,7 @@ impl OpCode0502 {
         Ok(())
     }
 
-    pub fn pdb(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn pdb(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() == 4, "Size of field {} != 4", reader.data().len());
 
         if parser.can_dump(1) {
@@ -42,7 +81,7 @@ impl OpCode0502 {
         Ok(())
     }
 
-    pub fn kteop(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn kteop(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() == 36, "Size of field {} != 36", reader.data().len());
 
         if parser.can_dump(1) {
@@ -63,31 +102,12 @@ impl OpCode0502 {
     }
 }
 
-impl VectorParser for OpCode0502 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<VectorInfo, OLRError> {
-        assert!(vector_header.fields_count <= 3, "Opcode: 5.2 Count of field > 3. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
-
-        let mut result = OpCode0502::default();
-
-        if let Some(mut field_reader) = reader.next() {
-            result.ktudh(parser, vector_header, &mut field_reader, 0)?;
-        } else {
-            return olr_perr!("Expect ktudh field");
-        }
-
-        if parser.version().unwrap() >= constants::REDO_VERSION_12_1 && parser.can_dump(1) {
-            if let Some(mut field_reader) = reader.next() {
-                if field_reader.data().len() == 4 {
-                    result.pdb(parser, &mut field_reader, 1)?;
-                } else {
-                    result.kteop(parser, &mut field_reader, 1)?;
-
-                    if let Some(mut field_reader) = reader.next() {
-                        result.pdb(parser, &mut field_reader, 2)?;
-                    }
-                }
-            }
-        }
-        Ok(VectorInfo::OpCode0502(result))
+impl<'a> VectorParser<'a> for OpCode0502<'a> {
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorInfo<'a>, OLRError> {
+        Ok(
+            VectorInfo::OpCode0502(
+                OpCode0502::new(parser, reader)?
+            )
+        )
     }
 }

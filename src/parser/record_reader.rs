@@ -1,17 +1,15 @@
-use std::ops::{Deref, DerefMut};
+use super::{byte_reader::ByteReader, parser_impl::RedoVectorHeader};
 
-use super::{byte_reader::ByteReader, parser_impl::RedoVectorHeader, records_manager::Record};
-
-
+#[derive(Debug)]
 pub struct VectorReader<'a> {
-    header : &'a RedoVectorHeader,
+    pub header : RedoVectorHeader,
     data : &'a [u8],
     current_pos : usize,
     current_field : usize,
 }
 
 impl<'a> VectorReader<'a> {
-    pub fn new(vector_header : &'a RedoVectorHeader, vector_data : &'a [u8]) -> Self {
+    pub fn new(vector_header : RedoVectorHeader, vector_data : &'a [u8]) -> Self {
         Self {
             header : vector_header,
             data : vector_data,

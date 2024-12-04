@@ -1,17 +1,57 @@
 use super::{VectorInfo, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
+use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
-#[derive(Default, Debug)]
-pub struct OpCode0504 {
+#[derive(Debug)]
+pub struct OpCode0504<'a> {
     pub xid : TypeXid,
     pub flg : u8,
+
+    reader : VectorReader<'a>,
 }
 
-impl OpCode0504 {
-    pub fn ktucm(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+impl<'a> OpCode0504<'a> {
+    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self, OLRError> {
+        let mut res = Self {
+            xid : Default::default(),
+            flg : Default::default(),
+            reader,
+        };
+        res.init(parser)?;
+        Ok(res)
+    }
+
+    fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
+        if !(self.reader.header.fields_count > 1 && self.reader.header.fields_count < 5) {
+            return olr_perr!("Opcode: 5.4 Count of field not in [2; 4]. Dump: {}", self.reader.by_ref().map(|x| {x.to_hex_dump()}).collect::<String>());
+        }
+        
+        match self.reader.next() {
+            Some(mut field_reader) => self.ktucm(parser, &mut field_reader, 0),
+            None => olr_perr!("Expect ktucm field"),
+        }?;
+
+        if self.reader.header.fields_count < 2 {
+            return Ok(());
+        }
+        
+        if self.flg & constants::FLAG_KTUCF_OP0504 != 0 {
+            match self.reader.next() {
+                Some(mut field_reader) => self.ktucf(parser, &mut field_reader, 1),
+                None => olr_perr!("Expect ktucf field"),
+            }?;
+        }
+
+        if parser.can_dump(1) && (self.flg & constants::FLAG_KTUCF_ROLLBACK != 0) {
+            parser.write_dump(format_args!("\nROLLBACK TRANSACTION\n"));
+        }
+
+        Ok(())
+    }
+
+    fn ktucm(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() == 20, "Size of field {} != 20", reader.data().len());
 
-        let xid_usn = (vector_header.class - 15) / 2;
+        let xid_usn = (self.reader.header.class - 15) / 2;
         let xid_slot = reader.read_u16()?;
         reader.skip_bytes(2);
         let xid_seq = reader.read_u32()?;
@@ -32,7 +72,7 @@ impl OpCode0504 {
         Ok(())
     }
 
-    pub fn ktucf(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn ktucf(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() == 16, "Size of field {} != 16", reader.data().len());
 
         if parser.can_dump(1) {
@@ -47,34 +87,12 @@ impl OpCode0504 {
     }
 }
 
-impl VectorParser for OpCode0504 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<VectorInfo, OLRError> {
-        assert!(vector_header.fields_count > 1 && vector_header.fields_count < 5, "Opcode: 5.4 Count of field not in [2; 4]. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
-
-        let mut result = OpCode0504::default();
-
-        if let Some(mut field_reader) = reader.next() {
-            result.ktucm(parser, vector_header, &mut field_reader, 0)?;
-        } else {
-            return olr_perr!("Expect ktucm field");
-        }
-
-        if vector_header.fields_count < 2 {
-            return Ok(VectorInfo::OpCode0504(result));
-        }
-        
-        if result.flg & constants::FLAG_KTUCF_OP0504 != 0 {
-            if let Some(mut field_reader) = reader.next() {
-                result.ktucf(parser, &mut field_reader, 1)?;
-            } else {
-                return olr_perr!("Expect ktucf field");
-            }
-        }
-
-        if parser.can_dump(1) && (result.flg & constants::FLAG_KTUCF_ROLLBACK != 0) {
-            parser.write_dump(format_args!("\nROLLBACK TRANSACTION\n"));
-        }
-
-        Ok(VectorInfo::OpCode0504(result))
+impl<'a> VectorParser<'a> for OpCode0504<'a> {
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorInfo<'a>, OLRError> {
+        Ok(
+            VectorInfo::OpCode0504(
+                OpCode0504::new(parser, reader)?
+            )
+        )
     }
 }
