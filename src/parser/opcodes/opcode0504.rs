@@ -1,7 +1,7 @@
-use super::VectorParser;
+use super::{VectorInfo, VectorParser};
 use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct OpCode0504 {
     pub xid : TypeXid,
     pub flg : u8,
@@ -40,10 +40,7 @@ impl OpCode0504 {
             let ext = reader.read_u16()?;
             let spc = reader.read_u16()?;
             let fbi = reader.read_u8()?;
-            reader.skip_bytes(3);
             parser.write_dump(format_args!("\n[Change {}; KTUCF] UBA: {:016X} EXT: {}\nSPC: {} FBI: {}\n", field_num, uba, ext, spc, fbi));
-        } else {
-            reader.skip_bytes(16);
         }
         
         Ok(())
@@ -51,7 +48,7 @@ impl OpCode0504 {
 }
 
 impl VectorParser for OpCode0504 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
+    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<VectorInfo, OLRError> {
         assert!(vector_header.fields_count > 1 && vector_header.fields_count < 5, "Opcode: 5.4 Count of field not in [2; 4]. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
 
         let mut result = OpCode0504::default();
@@ -63,7 +60,7 @@ impl VectorParser for OpCode0504 {
         }
 
         if vector_header.fields_count < 2 {
-            return Ok(());
+            return Ok(VectorInfo::OpCode0504(result));
         }
         
         if result.flg & constants::FLAG_KTUCF_OP0504 != 0 {
@@ -74,10 +71,10 @@ impl VectorParser for OpCode0504 {
             }
         }
 
-        if parser.can_dump(1) && result.flg & constants::FLAG_KTUCF_ROLLBACK != 0 {
+        if parser.can_dump(1) && (result.flg & constants::FLAG_KTUCF_ROLLBACK != 0) {
             parser.write_dump(format_args!("\nROLLBACK TRANSACTION\n"));
         }
 
-        Ok(())
+        Ok(VectorInfo::OpCode0504(result))
     }
 }

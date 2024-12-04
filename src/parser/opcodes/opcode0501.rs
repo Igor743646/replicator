@@ -1,9 +1,9 @@
 use log::warn;
 
-use super::VectorParser;
+use super::{VectorInfo, VectorParser};
 use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct OpCode0501 {
     pub xid : TypeXid,
 
@@ -484,7 +484,7 @@ impl OpCode0501 {
 }
 
 impl VectorParser for OpCode0501 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
+    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<VectorInfo, OLRError> {
         let mut result = OpCode0501::default();
 
         if let Some(mut field_reader) = reader.next() {
@@ -496,13 +496,13 @@ impl VectorParser for OpCode0501 {
         if let Some(mut field_reader) = reader.next() {
             result.ktubl(parser, vector_header, &mut field_reader, 1)?;
         } else {
-            return Ok(())
+            return Ok(VectorInfo::OpCode0501(result))
         }
 
         if result.flg & (constants::FLG_MULTIBLOCKUNDOHEAD | constants::FLG_MULTIBLOCKUNDOTAIL | constants::FLG_MULTIBLOCKUNDOMID) != 0 
             || reader.eof() 
         {
-            return Ok(());
+            return Ok(VectorInfo::OpCode0501(result));
         }
 
         match result.opc {
@@ -510,7 +510,7 @@ impl VectorParser for OpCode0501 {
                 if let Some(mut field_reader) = reader.next() {
                     result.ktb_redo(parser, vector_header, &mut field_reader, 2)?;
                 } else {
-                    return Ok(())
+                    return Ok(VectorInfo::OpCode0501(result))
                 }
 
                 result.opc0a16(parser, vector_header, reader, 3)?;
@@ -519,7 +519,7 @@ impl VectorParser for OpCode0501 {
                 if let Some(mut field_reader) = reader.next() {
                     result.ktb_redo(parser, vector_header, &mut field_reader, 2)?;
                 } else {
-                    return Ok(())
+                    return Ok(VectorInfo::OpCode0501(result))
                 }
 
                 result.opc0b01(parser, vector_header, reader, 3)?;
@@ -529,6 +529,6 @@ impl VectorParser for OpCode0501 {
             },
         }
         
-        Ok(())
+        Ok(VectorInfo::OpCode0501(result))
     }
 }

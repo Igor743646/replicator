@@ -1,17 +1,18 @@
 use core::fmt;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::fs::{File, Metadata, OpenOptions};
-use std::io::{Read, Seek, Write};
-use std::ops::DerefMut;
-use std::process::exit;
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
 use std::path::PathBuf;
 
 use clap::error::Result;
-use log::{debug, info, trace, warn};
+use log::{error, info, trace, warn};
+use serde_json::json;
 
+use crate::builder::JsonBuilder;
+use crate::common::constants;
 use crate::common::thread::spawn;
 use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
 use crate::ctx::Ctx;
@@ -22,7 +23,7 @@ use crate::parser::opcodes::opcode0502::OpCode0502;
 use crate::parser::opcodes::opcode0504::OpCode0504;
 use crate::parser::opcodes::opcode0520::OpCode0520;
 use crate::parser::opcodes::opcode1102::OpCode1102;
-use crate::parser::opcodes::VectorParser;
+use crate::parser::opcodes::{VectorInfo, VectorParser};
 use crate::parser::record_analizer::RecordAnalizer;
 use crate::parser::record_reader::VectorReader;
 use crate::parser::records_manager::Record;
@@ -156,7 +157,45 @@ pub struct RedoVectorHeader {
 
 impl Display for RedoVectorHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OpCode: {}.{} ({:02X}.{:02X})\n", self.op_code.0, self.op_code.1, self.op_code.0, self.op_code.1)?;
+        let opcode_desc = match self.op_code {
+            (5, 1) => "Operation info (undo block redo)",
+            (5, 2) => "Begin transaction / iternal (undo header redo)",
+            (5, 4) => "Commit / rollback",
+            (5, 6) => "Rollback record index in an undo block",
+            (5, 11) => "Rollback DBA in transaction table entry",
+            (5, 19) | (5, 20) => "Session info",
+            (10, 2) => "Insert leaf row",
+            (10, 8) => "Initialize new leaf block",
+            (10, 18) => "Update keydata in row",
+            (11, 2) => "Insert row piece",
+            (11, 3) => "Delete row piece",
+            (11, 4) => "Lock row piece",
+            (11, 5) => "Update row piece",
+            (11, 6) => "Overwrite row piece",
+            (11, 8) => "Change forwarding address",
+            (11, 11) => "Insert multiply rows",
+            (11, 12) => "Delete multiply rows",
+            (11, 16) => "Logminer support - RM for rowpiece with only logminer columns",
+            (11, 17) => "Update multiply rows",
+            (11, 22) => "Logminer support",
+            (19, 1) => "Direct block logging",
+            (24, 1) => "Common portion of the ddl",
+            (26, 2) => "Generic lob redo",
+            (26, 6) => "Direct lob direct-load redo",
+
+            (4, _) => "Transaction block",
+            (5, _) => "Transaction undo",
+            (10, _) => "Transaction index",
+            (13, _) => "Transaction segment",
+            (14, _) => "Transaction extent",
+            (17, _) => "Recovery (REDO)",
+            (18, _) => "Hot Backup Log Blocks",
+            (22, _) => "Tablespace bitmapped file operations",
+            (23, _) => "Write behind logging of blocks",
+            (24, _) => "Logminer related (DDL or OBJV# redo)",
+            (_, _) => "Unknown",
+        };
+        write!(f, "OpCode: {}.{} ({})\n", self.op_code.0, self.op_code.1, opcode_desc)?;
         write!(f, "Class: {} Absolute file number: {} DBA: {}\n", self.class, self.afn, self.dba)?;
         write!(f, "Vector SCN: {} SEQ: {} TYP: {}\n", self.vector_scn, self.seq, self.typ)?;
         if let Some(ref ext) = self.expansion {
@@ -169,7 +208,8 @@ impl Display for RedoVectorHeader {
 
 #[derive(Debug)]
 pub struct Parser {
-    pub context_ptr : Arc<Ctx>,
+    context_ptr : Arc<Ctx>,
+    builder_ptr : Arc<JsonBuilder>,
     file_path : PathBuf,
     sequence : TypeSeq,
 
@@ -177,7 +217,7 @@ pub struct Parser {
     version         : Option<u32>,
     endian          : Option<byte_reader::Endian>,
     metadata        : Option<Metadata>,
-    pub dump_log_level  : u64,
+    dump_log_level  : u64,
     dump_file       : Option<File>,
 
     records_manager : RecordsManager,
@@ -208,7 +248,7 @@ impl Ord for Parser {
 }
 
 impl Parser {
-    pub fn new(context_ptr : Arc<Ctx> , file_path : PathBuf, sequence : TypeSeq) -> Self {
+    pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, file_path : PathBuf, sequence : TypeSeq) -> Self {
         let mut dump_file = None;
         if context_ptr.dump.level > 0 {
             std::fs::create_dir_all(PathBuf::new().join(context_ptr.dump.path.as_str())).unwrap();
@@ -217,6 +257,7 @@ impl Parser {
         }
         Self {
             context_ptr: context_ptr.clone(), 
+            builder_ptr,
             file_path, 
             sequence,
             block_size : None,
@@ -269,6 +310,7 @@ impl Parser {
         let mut end_block : usize = 0;
         let mut redo_log_header : RedoLogHeader = Default::default();
         let mut record_position = 0;
+        let mut timestamp : TypeTimestamp = Default::default();
         let mut record : Option<&mut Record> = None;
 
         loop {
@@ -317,7 +359,8 @@ impl Parser {
                     };
 
                     assert!(redo_record_header.expansion.is_some(), "Dump: {}", reader.to_error_hex_dump(16, 68));
-                    end_block = start_block + redo_record_header.expansion.unwrap().records_count as usize;
+                    end_block = start_block + redo_record_header.expansion.as_ref().unwrap().records_count as usize;
+                    timestamp = redo_record_header.expansion.as_ref().unwrap().records_timestamp.clone();
 
                     reader.reset_cursor();
                     reader.skip_bytes(16);
@@ -348,7 +391,8 @@ impl Parser {
                         record.as_mut().unwrap().block = start_block as u32;
                         record.as_mut().unwrap().offset = prev_offset as u16;
                         record.as_mut().unwrap().size = redo_record_header.record_size;
-                        
+                        record.as_mut().unwrap().timestamp = timestamp.clone();
+
                         reader.reset_cursor();
                         reader.skip_bytes(prev_offset);
                     }
@@ -555,6 +599,7 @@ impl RecordAnalizer for Parser {
             self.write_dump(format_args!("\nHeader: {}", record_header));
         }
 
+        let mut vector_info_pull : VecDeque<VectorInfo> = VecDeque::with_capacity(2);
         while !reader.eof() {
             let vector_header: RedoVectorHeader = reader.read_redo_vector_header(version)?;
             reader.align_up(4);
@@ -577,23 +622,77 @@ impl RecordAnalizer for Parser {
 
             reader.skip_bytes(vector_body_size);
 
-            match vector_header.op_code {
+            let vector_info = match vector_header.op_code {
                 (5, 1) => OpCode0501::parse(self, &vector_header, &mut vec_reader)?,
                 (5, 2) => OpCode0502::parse(self, &vector_header, &mut vec_reader)?,
                 (5, 4) => OpCode0504::parse(self, &vector_header, &mut vec_reader)?,
                 (5, 20) => OpCode0520::parse(self, &vector_header, &mut vec_reader)?,
                 (11, 2) => OpCode1102::parse(self, &vector_header, &mut vec_reader)?,
                 (a, b) => {
-                    match (a, b) {
-                        (11, 17) => (),
-                        (a, b) => warn!("Opcode: {}.{} not implemented", a, b),
-                    }
-
+                    warn!("Opcode: {}.{} not implemented", a, b); 
+                    continue;
                 },
-            }
+            };
+            vector_info_pull.push_back(vector_info);
             
+            if vector_info_pull.len() == 2 {
+                vector_info_pull.clear();
+            }
+
+            static mut OUTPUT : bool = false;
+            if vector_info_pull.len() == 1 {
+
+                match vector_info_pull.front().unwrap() {
+                    VectorInfo::OpCode0502(begin) => {
+                        if begin.xid.sequence_number != 0 { // else INTERNAL
+                            let mut output_file = if unsafe { OUTPUT } {
+                                OpenOptions::new().write(true).append(true).open("out.txt").unwrap()
+                            } else {
+                                unsafe { OUTPUT = true; }
+                                OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap()
+                            };
+                            
+                            let value = json!({
+                                "OP" : "start",
+                                "SCN": record.scn.to_string(),
+                                "TIMESTAMP": record.timestamp.to_string(),
+                                "XID": begin.xid.to_string(),
+                            });
+    
+                            output_file.write(value.to_string().as_bytes()).unwrap();
+                            output_file.write(b"\n").unwrap();
+                        }
+                        
+                        vector_info_pull.clear();
+                    },
+                    VectorInfo::OpCode0504(commit) => {
+                        let mut output_file = if unsafe { OUTPUT } {
+                            OpenOptions::new().write(true).append(true).open("out.txt").unwrap()
+                        } else {
+                            unsafe { OUTPUT = true; }
+                            OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap()
+                        };
+                        
+                        let value = json!({
+                            "OP" : if commit.flg & constants::FLAG_KTUCF_ROLLBACK != 0 {"rollback"} else {"commit"},
+                            "SCN": record.scn.to_string(),
+                            "TIMESTAMP": record.timestamp.to_string(),
+                            "XID": commit.xid.to_string(),
+                        });
+
+                        output_file.write(value.to_string().as_bytes()).unwrap();
+                        output_file.write(b"\n").unwrap();
+                        
+                        
+                        vector_info_pull.clear();
+                    },
+                    _ => (),
+                }
+
+            }
         }
 
+        vector_info_pull.clear();
         Ok(())
     }
 }

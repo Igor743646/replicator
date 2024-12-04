@@ -1,7 +1,7 @@
-use super::VectorParser;
+use super::{VectorInfo, VectorParser};
 use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct OpCode0502 {
     pub xid : TypeXid,
     pub flg : u16,
@@ -64,7 +64,7 @@ impl OpCode0502 {
 }
 
 impl VectorParser for OpCode0502 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
+    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<VectorInfo, OLRError> {
         assert!(vector_header.fields_count <= 3, "Opcode: 5.2 Count of field > 3. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
 
         let mut result = OpCode0502::default();
@@ -88,6 +88,6 @@ impl VectorParser for OpCode0502 {
                 }
             }
         }
-        Ok(())
+        Ok(VectorInfo::OpCode0502(result))
     }
 }

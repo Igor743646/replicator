@@ -1,7 +1,7 @@
-use super::VectorParser;
+use super::{VectorInfo, VectorParser};
 use crate::{common::{constants, errors::OLRError}, parser::{byte_reader::ByteReader, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct OpCode0520 {
     pub session_number : u32,
     pub serial_number : u16,
@@ -112,7 +112,7 @@ impl OpCode0520 {
 }
 
 impl VectorParser for OpCode0520 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
+    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<VectorInfo, OLRError> {
         assert!(vector_header.fields_count == 8, "Opcode: 5.4 Count of field != 8. Dump: {}", reader.map(|x| {x.to_hex_dump()}).collect::<String>());
 
         let mut result = OpCode0520::default();
@@ -149,6 +149,6 @@ impl VectorParser for OpCode0520 {
             result.session_attribute_8(parser, &mut field_reader, 7)?;
         }
         
-        Ok(())
+        Ok(VectorInfo::OpCode0520(result))
     }
 }

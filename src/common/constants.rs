@@ -14,7 +14,7 @@ pub const REDO_VERSION_19_0 : u32 = 0x13000000;
 pub const REDO_VERSION_23_0 : u32 = 0x17000000;
 
 pub const FLAG_KTUCF_OP0504 : u8 = 0x02;
-pub const FLAG_KTUCF_ROLLBACK : u8 = 0x02;
+pub const FLAG_KTUCF_ROLLBACK : u8 = 0x04;
 
 pub const FLG_MULTIBLOCKUNDOHEAD : u16 = 0x0001;
 pub const FLG_MULTIBLOCKUNDOTAIL : u16 = 0x0002;

@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, ptr, sync::Arc};
 
-use crate::{common::{constants, errors::{OLRError, OLRErrorCode::*}, memory_pool::MemoryChunk, types::TypeRecordScn}, ctx::Ctx, olr_err};
+use crate::{common::{constants, errors::{OLRError, OLRErrorCode::*}, memory_pool::MemoryChunk, types::{TypeRecordScn, TypeTimestamp}}, ctx::Ctx, olr_err};
 
 use super::{byte_reader::ByteReader, byte_writer::ByteWriter};
 
@@ -10,6 +10,7 @@ pub struct Record {
     pub offset : u16,
     pub size : u32,
     pub scn : TypeRecordScn,
+    pub timestamp : TypeTimestamp,
     pub sub_scn : u16,
     data : *mut u8,
 }

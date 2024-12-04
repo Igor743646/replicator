@@ -385,20 +385,41 @@ impl OracleLogicalReplicator {
                     let server = self.get_json_field_s(&reader_json, "server")?.expect("Field 'server' must be defined for online type");
                     let mapping_fn = self.mapping_configuration(reader_json)?;
 
-                    let archive_digger: Box<dyn ArchiveDigger> = if let Some(arch) = self.get_json_field_s(&source_json, "arch")? {
-                        let arch_get_log = match arch.as_str() {
-                            "path" => {
-                                Box::new(ArchiveDiggerOffline::new(context_ptr.clone(), log_archive_format, "".into(), "".into(), Some(start_sequence), mapping_fn))
-                            },
-                            "online" => std::unimplemented!(),
-                            _ => return olr_err!(NotValidField, "Field 'arch' ({}) expected: one of {{path, online}}", arch)
-                        };
-
-                        arch_get_log
-                    } else {
-                        Box::new(ArchiveDiggerOffline::new(context_ptr.clone(),log_archive_format, "".into(), "".into(), Some(start_sequence), mapping_fn))
+                    let archive_digger: Box<dyn ArchiveDigger> = match self.get_json_field_s(&source_json, "arch")? {
+                        Some(arch) if arch.as_str() == "online" => {
+                            std::unimplemented!()
+                        },
+                        Some(arch) if arch.as_str() == "path" => {
+                            Box::new(
+                                ArchiveDiggerOffline::new(
+                                    context_ptr.clone(), 
+                                    builder_ptr.clone(), 
+                                    log_archive_format, 
+                                    "".into(), 
+                                    "".into(), 
+                                    Some(start_sequence), 
+                                    mapping_fn
+                                )
+                            )
+                        },
+                        Some(arch) => {
+                            return olr_err!(NotValidField, "Field 'arch' ({}) expected: one of {{path, online}}", arch);
+                        },
+                        None => {
+                            Box::new(
+                                ArchiveDiggerOffline::new(
+                                    context_ptr.clone(), 
+                                    builder_ptr.clone(), 
+                                    log_archive_format, 
+                                    "".into(), 
+                                    "".into(), 
+                                    Some(start_sequence), 
+                                    mapping_fn
+                                )
+                            )
+                        },
                     };
-                    
+
                     let replicator = OnlineReplicator::new(context_ptr.clone(), builder_ptr.clone(), metadata_ptr.clone(), archive_digger,
                                                         alias, source_name, user, password, server);
                     replicator

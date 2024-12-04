@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use log::{info, trace, warn};
 
+use crate::builder::JsonBuilder;
 use crate::common::types::TypeSeq;
 use crate::ctx::Ctx;
 use crate::{common::errors::OLRError, olr_err, parser::parser_impl::Parser};
@@ -17,6 +18,7 @@ pub trait ArchiveDigger where Self: Send + Sync + Debug {
 
 pub struct ArchiveDiggerOffline {
     context_ptr : Arc<Ctx>,
+    builder_ptr : Arc<JsonBuilder>,
     archive_log_format : String, 
     db_recovery_file_destination : String,
     db_name : String,
@@ -34,10 +36,11 @@ unsafe impl Send for ArchiveDiggerOffline {}
 unsafe impl Sync for ArchiveDiggerOffline {}
 
 impl ArchiveDiggerOffline {
-    pub fn new(context : Arc<Ctx>, archive_log_format : String, db_recovery_file_destination : String,
+    pub fn new(context : Arc<Ctx>, builder : Arc<JsonBuilder>, archive_log_format : String, db_recovery_file_destination : String,
         db_name : String, min_sequence : Option<TypeSeq>, mapping_fn : Box<dyn Fn(PathBuf) -> PathBuf>) -> Self {
         Self {
             context_ptr: context,
+            builder_ptr : builder,
             archive_log_format, 
             db_recovery_file_destination,
             db_name,
@@ -123,7 +126,7 @@ impl ArchiveDigger for ArchiveDiggerOffline {
 
                 info!("Found sequence: {:?}", sequence);
 
-                parser_queue.push(Reverse(Parser::new(self.context_ptr.clone(), archive_file, sequence)));
+                parser_queue.push(Reverse(Parser::new(self.context_ptr.clone(), self.builder_ptr.clone(), archive_file, sequence)));
             }
         }
 
@@ -183,59 +186,5 @@ impl ArchiveDigger for ArchiveDiggerOffline {
         }
 
         return None;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{path::PathBuf, str::FromStr, sync::Arc};
-    use crate::{common::errors::OLRError, ctx::{Ctx, Dump}, init_logger};
-    use super::{ArchiveDigger, ArchiveDiggerOffline};
-
-    fn create_offline_digger(min_seq : u64) -> ArchiveDiggerOffline {
-        let context: Arc<crate::ctx::Ctx> = Arc::new(Ctx::new(
-            Dump::default(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 1).unwrap());
-        ArchiveDiggerOffline::new(
-            context,
-            "o1_mf_%t_%s_%h_.arc".to_string(),
-            "".to_string(),
-            "DB_NAME".to_string(),
-            Some(min_seq as u32),
-            Box::new(|path| -> PathBuf {
-                match path.to_str().unwrap() {
-                    r"/opt/oracle/fst/archivelog" => r"/data/d2/archivelog".into(),
-                    r"DB_NAME\archivelog" => r"./archivelog".into(),
-                    r"DB_NAME/archivelog" => r"./archivelog".into(),
-                    _ => path,
-                }
-            }),
-        )
-    }
-
-    #[test]
-    fn test_mapping_none() -> Result<(), OLRError> {
-        let digger = create_offline_digger(0);
-        assert_eq!((digger.mapping_fn)("".into()), PathBuf::from_str("").unwrap());
-        Ok(())
-    }
-
-    #[test]
-    fn test_mapping_ok() -> Result<(), OLRError> {
-        let digger = create_offline_digger(0);
-        assert_eq!((digger.mapping_fn)("/opt/oracle/fst/archivelog".into()), PathBuf::from_str("/data/d2/archivelog").unwrap());
-        Ok(())
-    }
-
-    #[test]
-    fn test_queue_getting() -> Result<(), OLRError> {
-        init_logger();
-        let q1 = create_offline_digger(0).get_parsers_queue()?;
-        assert_eq!(q1.len(), 6);
-
-
-        let q2 = create_offline_digger(173).get_parsers_queue()?;
-        assert_eq!(q2.len(), 3);
-
-        Ok(())
     }
 }

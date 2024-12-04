@@ -1,34 +1,13 @@
-use super::VectorParser;
+use super::{VectorInfo, VectorParser};
 use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, opcodes::opcode0501::OpCode0501, parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader}};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct OpCode1102 {
-}
 
-impl OpCode1102 {
-    pub fn ktudh(&mut self, parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() == 32, "Size of field {} != 32", reader.data().len());
-
-
-        Ok(())
-    }
-
-    pub fn pdb(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() == 4, "Size of field {} != 4", reader.data().len());
-
-        if parser.can_dump(1) {
-            let pdb_id = reader.read_u32()?;
-            parser.write_dump(format_args!("\n[Change {}; PDB] PDB id: {}\n", field_num, pdb_id));
-        } else {
-            reader.skip_bytes(4);
-        }
-        
-        Ok(())
-    }
 }
 
 impl VectorParser for OpCode1102 {
-    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<(), OLRError> {
+    fn parse(parser : &mut Parser, vector_header: &RedoVectorHeader, reader : &mut VectorReader) -> Result<VectorInfo, OLRError> {
         let mut result = OpCode0501::default();
 
         if let Some(mut field_reader) = reader.next() {
@@ -41,7 +20,7 @@ impl VectorParser for OpCode1102 {
             result.kdo_opcode(parser, vector_header, &mut field_reader, 1)?;
             field_reader
         } else {
-            return Ok(());
+            return Ok(VectorInfo::OpCode0501(result));
         };
 
         if let Some(mut field_reader) = reader.next() {
@@ -71,6 +50,6 @@ impl VectorParser for OpCode1102 {
             }
         }
         
-        Ok(())
+        Ok(VectorInfo::OpCode0501(result))
     }
 }

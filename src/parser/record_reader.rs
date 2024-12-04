@@ -20,6 +20,11 @@ impl<'a> VectorReader<'a> {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.current_pos = 0;
+        self.current_field = 0;
+    }
+
     pub fn eof(&self) -> bool {
         self.current_field >= self.header.fields_count as usize
     }

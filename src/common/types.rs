@@ -56,13 +56,13 @@ impl From<u64> for TypeRecordScn {
 
 impl std::fmt::Debug for TypeRecordScn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ({:04X}.{:08X})", self.0, (self.0 >> 32) & 0xFFFF, self.0 & 0xFFFFFFFF)
+        write!(f, "{}", self.0)
     }
 }
 
 impl std::fmt::Display for TypeRecordScn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ({:04X}.{:08X})", self.0, (self.0 >> 32) & 0xFFFF, self.0 & 0xFFFFFFFF)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -88,7 +88,7 @@ impl Display for TypeRBA {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct TypeTimestamp(u32);
 
 impl TypeTimestamp {
@@ -126,7 +126,7 @@ impl Display for TypeTimestamp {
         res /= 12;
         let yy = res + 1988;
         
-        write!(f, "{:04}-{:02}-{:02} {:02}:{:02}:{:02} ({})", yy, mm, dd, hh, mi, ss, self.0)
+        write!(f, "{:02}-{:02}-{:04} {:02}:{:02}:{:02}", dd, mm, yy, hh, mi, ss)
     }
 }
 
@@ -159,7 +159,7 @@ impl From<u64> for TypeXid {
 
 impl Display for TypeXid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}.{} ({:04X}.{:04X}.{:08X})", self.undo_segment_number, self.slot_number, self.sequence_number, self.undo_segment_number, self.slot_number, self.sequence_number)
+        write!(f, "{}.{}.{}", self.undo_segment_number, self.slot_number, self.sequence_number)
     }
 }
 
