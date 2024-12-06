@@ -1,4 +1,5 @@
 use clap::Parser;
+use oracle_logical_replicator::OracleLogicalReplicator;
 use std::io::Write;
 use std::u32;
 use log::{error, info};
@@ -35,10 +36,10 @@ fn start(args : ReplicatorArgs) -> Result<(), OLRError> {
     info!("Config file name: {}", args.file);
 
     if let Err(err) = std::fs::metadata(&args.file) {
-        return olr_err!(GetFileMetadata, "Get metadata from file: {} error: {}", args.file, err.to_string());
+        return olr_err!(GetFileMetadata, "Get metadata from file: {} error: {}", args.file, err);
     }
 
-    let replicator = oracle_logical_replicator::OracleLogicalReplicator::new(args.file);
+    let replicator: OracleLogicalReplicator = OracleLogicalReplicator::new(args.file);
 
     replicator.run()
 }
@@ -90,14 +91,17 @@ fn init_logger() {
 fn main() {
     init_logger();
 
-    let args = ReplicatorArgs::parse();
+    let args: ReplicatorArgs = ReplicatorArgs::parse();
 
-    let res = start(args);
+    let res: Result<(), OLRError> = start(args);
 
-    if let Err(err) = res {
-        error!("{}", err);
-        info!("Replication stopped due to error");
-    } else {
-        info!("Replication stopped");
+    match res {
+        Ok(_) => {
+            info!("Replication stopped");
+        }
+        Err(err) => {
+            error!("{}", err);
+            info!("Replication stopped due to error");
+        }
     }
 }

@@ -5,6 +5,7 @@ pub enum OLRErrorCode {
     Internal = 1,
     WrongFileName = 100000,
     WrongDirName,
+    CreateDir,
     GetFileMetadata,
     FileReading,
     FileWriting,

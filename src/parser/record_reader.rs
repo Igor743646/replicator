@@ -42,4 +42,9 @@ impl<'a> Iterator for VectorReader<'a> {
             Some(reader)
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let tail_size = self.header.fields_count as usize - self.current_field;
+        (tail_size, Some(tail_size))
+    }
 }

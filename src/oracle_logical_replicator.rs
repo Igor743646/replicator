@@ -30,17 +30,15 @@ impl OracleLogicalReplicator {
     }
 
     fn check_config_fields<const T : usize>(&self, config_value : &serde_json::Value, fields : [&str; T]) -> Result<(), OLRError> {
-        let map = config_value.as_object()
-            .ok_or(olr_err!(Internal, "Data not a map: {}", config_value))?;
-
-        for (child, _) in map {
-
-            // TODO: Can do binary search for fields
-            let search_result = fields.contains(&child.as_str());
-
-            if !search_result {
-                return olr_err!(UnknownConfigField, "Find unknown field: {}", child);
+        if let Some(map) = config_value.as_object() {
+            for (child, _) in map {
+                // TODO: Can do binary search for fields
+                if !fields.contains(&child.as_str()) {
+                    return olr_err!(UnknownConfigField, "Find unknown field: {}", child);
+                }
             }
+        } else {
+            return olr_err!(Internal, "Data not a map: {}", config_value);
         }
 
         Ok(())
@@ -48,60 +46,40 @@ impl OracleLogicalReplicator {
 
     fn get_json_field_a<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<&'a Vec<serde_json::Value>>, OLRError> {
         match value.get(name) {
-            Some(val) => {
-                match val.as_array() {
-                    Some(val) => Ok(Some(val)),
-                    None => olr_err!(WrongConfigFieldType, "Field '{}' not an array", name),
-                }
-            },
+            Some(val) if val.is_array() => Ok(Some(val.as_array().unwrap())),
+            Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not an array", name),
             None => Ok(None),
         }
     }
 
     fn get_json_field_o<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<&'a serde_json::Value>, OLRError> {
         match value.get(name) {
-            Some(val) => {
-                match val.is_object() {
-                    true => Ok(Some(val)),
-                    false => olr_err!(WrongConfigFieldType, "Field '{}' not an object", name),
-                }
-            },
+            Some(val) if val.is_object() => Ok(Some(val)),
+            Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not an object", name),
             None => Ok(None),
         }
     }
 
     fn get_json_field_s<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<String>, OLRError> {
         match value.get(name) {
-            Some(val) => {
-                match val.as_str() {
-                    Some(val) => Ok(Some(val.into())),
-                    None => olr_err!(WrongConfigFieldType, "Field '{}' not an string", name),
-                }
-            },
+            Some(val) if val.is_string() => Ok(Some(val.as_str().unwrap().to_string())),
+            Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not a string", name),
             None => Ok(None),
         }
     }
 
     fn get_json_field_i64(&self, value : &serde_json::Value, name : &str) -> Result<Option<i64>, OLRError> {
         match value.get(name) {
-            Some(val) => {
-                match val.as_i64() {
-                    Some(val) => Ok(Some(val)),
-                    None => olr_err!(WrongConfigFieldType, "Field '{}' not an i64", name),
-                }
-            },
+            Some(val) if val.is_i64() => Ok(Some(val.as_i64().unwrap())),
+            Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not a i64", name),
             None => Ok(None),
         }
     }
 
     fn get_json_field_u64(&self, value : &serde_json::Value, name : &str) -> Result<Option<u64>, OLRError> {
         match value.get(name) {
-            Some(val) => {
-                match val.as_u64() {
-                    Some(val) => Ok(Some(val)),
-                    None => olr_err!(WrongConfigFieldType, "Field '{}' not an u64", name),
-                }
-            },
+            Some(val) if val.is_u64() => Ok(Some(val.as_u64().unwrap())),
+            Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not a u64", name),
             None => Ok(None),
         }
     }

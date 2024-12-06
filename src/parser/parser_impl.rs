@@ -249,10 +249,11 @@ impl Ord for Parser {
 
 impl Parser {
     pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, file_path : PathBuf, sequence : TypeSeq) -> Self {
-        let mut dump_file = None;
+        let mut dump_file: Option<File> = None;
         if context_ptr.dump.level > 0 {
-            std::fs::create_dir_all(PathBuf::new().join(context_ptr.dump.path.as_str())).unwrap();
-            let dump_path = PathBuf::new().join(context_ptr.dump.path.as_str()).join(format!("dump-{}.ansi", sequence));
+            let directory: PathBuf = PathBuf::new().join(context_ptr.dump.path.as_str());
+            let dump_path: PathBuf = directory.join(format!("dump-{}.ansi", sequence));
+            std::fs::create_dir_all(directory).unwrap();
             dump_file = Some(File::create(dump_path).unwrap());
         }
         Self {
@@ -314,11 +315,11 @@ impl Parser {
         let mut record : Option<&mut Record> = None;
 
         loop {
-            let message = rx.recv().unwrap();
+            let message: ReaderMessage = rx.recv().unwrap();
 
             let (chunk, blocks_count) = match message {
                 ReaderMessage::Read(chunk, size) => {
-                    assert!(size > 0);
+                    assert!(size >= 512);
                     (chunk, size / self.block_size.unwrap())
                 },
                 ReaderMessage::Eof => break,
@@ -362,8 +363,7 @@ impl Parser {
                     end_block = start_block + redo_record_header.expansion.as_ref().unwrap().records_count as usize;
                     timestamp = redo_record_header.expansion.as_ref().unwrap().records_timestamp.clone();
 
-                    reader.reset_cursor();
-                    reader.skip_bytes(16);
+                    reader.set_cursor(16)?;
                 }
 
                 while reader.cursor() < self.block_size.unwrap() {
@@ -393,8 +393,7 @@ impl Parser {
                         record.as_mut().unwrap().size = redo_record_header.record_size;
                         record.as_mut().unwrap().timestamp = timestamp.clone();
 
-                        reader.reset_cursor();
-                        reader.skip_bytes(prev_offset);
+                        reader.set_cursor(prev_offset)?;
                     }
 
                     let to_copy = std::cmp::min(to_read, self.block_size.unwrap() - reader.cursor());
@@ -487,58 +486,58 @@ impl Parser {
 
         let mut redo_log_header : RedoLogHeader = RedoLogHeader::default();
 
-        redo_log_header.block_header = reader.read_block_header().unwrap();
+        redo_log_header.block_header = reader.read_block_header()?;
         reader.skip_bytes(4);
-        redo_log_header.oracle_version = reader.read_u32().unwrap();
-        redo_log_header.database_id = reader.read_u32().unwrap();
-        redo_log_header.database_name = String::from_utf8(reader.read_bytes(8).unwrap()).unwrap();
-        redo_log_header.control_sequence = reader.read_u32().unwrap();
-        redo_log_header.file_size = reader.read_u32().unwrap();
+        redo_log_header.oracle_version = reader.read_u32()?;
+        redo_log_header.database_id = reader.read_u32()?;
+        redo_log_header.database_name = String::from_utf8(reader.read_bytes(8)?).unwrap();
+        redo_log_header.control_sequence = reader.read_u32()?;
+        redo_log_header.file_size = reader.read_u32()?;
         reader.skip_bytes(4);
-        redo_log_header.file_number = reader.read_u16().unwrap();
+        redo_log_header.file_number = reader.read_u16()?;
         reader.skip_bytes(2);
-        redo_log_header.activation_id = reader.read_u32().unwrap();
+        redo_log_header.activation_id = reader.read_u32()?;
         reader.skip_bytes(36);
-        redo_log_header.description = String::from_utf8(reader.read_bytes(64).unwrap()).unwrap();
-        redo_log_header.blocks_count = reader.read_u32().unwrap();
-        redo_log_header.resetlogs_id = reader.read_timestamp().unwrap();
-        redo_log_header.resetlogs_scn = reader.read_scn().unwrap();
-        redo_log_header.hws = reader.read_u32().unwrap();
-        redo_log_header.thread = reader.read_u16().unwrap();
+        redo_log_header.description = String::from_utf8(reader.read_bytes(64)?).unwrap();
+        redo_log_header.blocks_count = reader.read_u32()?;
+        redo_log_header.resetlogs_id = reader.read_timestamp()?;
+        redo_log_header.resetlogs_scn = reader.read_scn()?;
+        redo_log_header.hws = reader.read_u32()?;
+        redo_log_header.thread = reader.read_u16()?;
         reader.skip_bytes(2);
-        redo_log_header.first_scn = reader.read_scn().unwrap();
-        redo_log_header.first_time = reader.read_timestamp().unwrap();
-        redo_log_header.next_scn = reader.read_scn().unwrap();
-        redo_log_header.next_time = reader.read_timestamp().unwrap();
-        redo_log_header.eot = reader.read_u8().unwrap();
-        redo_log_header.dis = reader.read_u8().unwrap();
-        redo_log_header.zero_blocks = reader.read_u8().unwrap();
-        redo_log_header.format_id = reader.read_u8().unwrap();
-        redo_log_header.enabled_scn = reader.read_scn().unwrap();
-        redo_log_header.enabled_time = reader.read_timestamp().unwrap();
-        redo_log_header.thread_closed_scn = reader.read_scn().unwrap();
-        redo_log_header.thread_closed_time = reader.read_timestamp().unwrap();
+        redo_log_header.first_scn = reader.read_scn()?;
+        redo_log_header.first_time = reader.read_timestamp()?;
+        redo_log_header.next_scn = reader.read_scn()?;
+        redo_log_header.next_time = reader.read_timestamp()?;
+        redo_log_header.eot = reader.read_u8()?;
+        redo_log_header.dis = reader.read_u8()?;
+        redo_log_header.zero_blocks = reader.read_u8()?;
+        redo_log_header.format_id = reader.read_u8()?;
+        redo_log_header.enabled_scn = reader.read_scn()?;
+        redo_log_header.enabled_time = reader.read_timestamp()?;
+        redo_log_header.thread_closed_scn = reader.read_scn()?;
+        redo_log_header.thread_closed_time = reader.read_timestamp()?;
         reader.skip_bytes(4);
-        redo_log_header.misc_flags = reader.read_u32().unwrap();
-        redo_log_header.terminal_recovery_scn = reader.read_scn().unwrap();
-        redo_log_header.terminal_recovery_time = reader.read_timestamp().unwrap();
+        redo_log_header.misc_flags = reader.read_u32()?;
+        redo_log_header.terminal_recovery_scn = reader.read_scn()?;
+        redo_log_header.terminal_recovery_time = reader.read_timestamp()?;
         reader.skip_bytes(8);
-        redo_log_header.most_recent_scn = reader.read_scn().unwrap();
-        redo_log_header.largest_lwn = reader.read_u32().unwrap();
-        redo_log_header.real_next_scn = reader.read_scn().unwrap();
-        redo_log_header.standby_apply_delay = reader.read_u32().unwrap();
-        redo_log_header.prev_resetlogs_scn = reader.read_scn().unwrap();
-        redo_log_header.prev_resetlogs_id = reader.read_timestamp().unwrap();
-        redo_log_header.misc_flags_2 = reader.read_u32().unwrap();
+        redo_log_header.most_recent_scn = reader.read_scn()?;
+        redo_log_header.largest_lwn = reader.read_u32()?;
+        redo_log_header.real_next_scn = reader.read_scn()?;
+        redo_log_header.standby_apply_delay = reader.read_u32()?;
+        redo_log_header.prev_resetlogs_scn = reader.read_scn()?;
+        redo_log_header.prev_resetlogs_id = reader.read_timestamp()?;
+        redo_log_header.misc_flags_2 = reader.read_u32()?;
         reader.skip_bytes(4);
-        redo_log_header.standby_log_close_time = reader.read_timestamp().unwrap();
+        redo_log_header.standby_log_close_time = reader.read_timestamp()?;
         reader.skip_bytes(124);
-        redo_log_header.thr = reader.read_i32().unwrap();
-        redo_log_header.seq2 = reader.read_i32().unwrap();
-        redo_log_header.scn2 = reader.read_scn().unwrap();
-        redo_log_header.redo_log_key.copy_from_slice( reader.read_bytes(16).unwrap().as_slice()); 
+        redo_log_header.thr = reader.read_i32()?;
+        redo_log_header.seq2 = reader.read_i32()?;
+        redo_log_header.scn2 = reader.read_scn()?;
+        redo_log_header.redo_log_key.copy_from_slice( reader.read_bytes(16)?.as_slice()); 
         reader.skip_bytes(16);
-        redo_log_header.redo_log_key_flag = reader.read_u16().unwrap();
+        redo_log_header.redo_log_key_flag = reader.read_u16()?;
         reader.skip_bytes(30);
 
         Ok(redo_log_header)
