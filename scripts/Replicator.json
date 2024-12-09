@@ -12,7 +12,7 @@
               "type": "online",
               "user": "IGOR",
               "password": "nhbgrbkk2001",
-              "server": "unknown",
+              "server": "//172.25.14.136/FST",
               "start-seq": 222,
               "start-scn": 19632726,
               "redo-log": [

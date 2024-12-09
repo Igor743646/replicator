@@ -1,3 +1,4 @@
+use crate::common::constants;
 
 #[derive(Debug)]
 pub struct DataBaseObject {
@@ -15,4 +16,16 @@ impl DataBaseObject {
     pub fn add_key(&mut self, key : String) {
         self.keys.push(key);
     }
+
+    pub fn schema(&self) -> &String {
+        &self.schema
+    }
+
+    pub fn regexp_name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn is_system(&self) -> bool {
+        self.options & constants::OPTIONS_SYSTEM_TABLE != 0
+    } 
 }

@@ -24,6 +24,8 @@ pub enum OLRErrorCode {
     TakeLock,
     MemoryAllocation,
     ThreadSpawn,
+    OracleConnection,
+    OracleQuery,
 }
 
 #[derive(Debug)]
