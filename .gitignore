@@ -3,3 +3,4 @@ log.log
 archivelog
 output
 out.*
+schema.json
