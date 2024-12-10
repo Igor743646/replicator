@@ -22,6 +22,6 @@ pub struct SysUserTable {
 
 impl SysUserTable {
     pub fn add_row(&mut self, user : u32, name : String, spare1 : u128) {
-        self.rows.insert(user, SysUser::new(user, name, spare1));
+        let _ = self.rows.insert(user, SysUser::new(user, name, spare1));
     }
 }

@@ -44,7 +44,11 @@
                   {
                       "owner": "IGOR",
                       "table": "TEST.*"
-                  }
+                  },
+                  {
+                    "owner": "IGORs",
+                    "table": "TESD"
+                }
               ]
           }
       }

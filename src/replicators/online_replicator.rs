@@ -1,9 +1,10 @@
 use std::{cmp::Reverse, sync::Arc};
 use log::{debug, info, warn};
 
-use crate::{builder::JsonBuilder, common::{errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, oradefs::oracle_schema::OracleSchemaInit};
+use crate::{builder::JsonBuilder, common::{errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err, oradefs::oracle_schema::OracleSchemaResource};
 
 use super::archive_digger::ArchiveDigger;
+use crate::common::OLRErrorCode::*;
 
 #[derive(Debug)]
 pub struct OnlineReplicator {
@@ -42,8 +43,11 @@ impl OnlineReplicator {
 impl Thread for OnlineReplicator {
     fn run(&self) -> Result<(), OLRError> {
         info!("Run Replicator");
+
+        let conn = oracle::Connection::connect(&self.user, &self.password, &self.server)
+            .map_err(|err| olr_err!(OracleConnection, "Problems with connection: {}", err))?;
         
-        self.metadata_ptr.init_schema(OracleSchemaInit::FromConnection(self.user.clone(), self.password.clone(), self.server.clone()))?;
+        self.metadata_ptr.set_schema_resource(OracleSchemaResource::FromConnection(conn))?;
         let mut parsers_queue = self.archive_digger.get_parsers_queue().unwrap();
         
         while let Some(Reverse(mut parser)) = parsers_queue.pop() {

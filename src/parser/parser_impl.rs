@@ -635,47 +635,15 @@ impl RecordAnalizer for Parser {
             };
             vector_info_pull.push_back(vector_info);
             
-            static mut OUTPUT : bool = false;
-
             if vector_info_pull.len() == 2 {
 
                 match (vector_info_pull.get(0).unwrap(), vector_info_pull.get(1).unwrap()) {
                     (VectorInfo::OpCode0501(opcode0501), VectorInfo::OpCode1102(opcode1102)) => {
-                        let mut output_file = if unsafe { OUTPUT } {
-                            OpenOptions::new().write(true).append(true).open("out.txt").unwrap()
-                        } else {
-                            unsafe { OUTPUT = true; }
-                            OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap()
-                        };
-
-                        let value = json!({
-                            "OP" : "insert",
-                            "SCN": record.scn.to_string(),
-                            "TIMESTAMP": record.timestamp.to_string(),
-                            "XID": opcode0501.xid.to_string(),
-                            "DATA_OBJ": opcode0501.data_obj,
-                        });
-
-                        output_file.write(value.to_string().as_bytes()).unwrap();
-                        output_file.write(b"\n").unwrap();
+                        self.builder_ptr.process_insert(record.scn, record.timestamp, opcode0501, opcode1102)?;
                     },
                     (a, b) => {
-                        let mut output_file = if unsafe { OUTPUT } {
-                            OpenOptions::new().write(true).append(true).open("out.txt").unwrap()
-                        } else {
-                            unsafe { OUTPUT = true; }
-                            OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap()
-                        };
-
-                        // let value = json!({
-                        //     "OP" : "start",
-                        //     "SCN": record.scn.to_string(),
-                        //     "TIMESTAMP": record.timestamp.to_string(),
-                        //     "XID": begin.xid.to_string(),
-                        // });
-
-                        output_file.write(format!("{} {}", a, b).as_bytes()).unwrap();
-                        output_file.write(b"\n").unwrap();
+                        info!("Unknown pair: {} {}", a, b);
+                        warn!("Can not process it");
                     }
                 }
 
@@ -687,45 +655,14 @@ impl RecordAnalizer for Parser {
                 match vector_info_pull.front().unwrap() {
                     VectorInfo::OpCode0502(begin) => {
                         if begin.xid.sequence_number != 0 { // else INTERNAL
-                            let mut output_file = if unsafe { OUTPUT } {
-                                OpenOptions::new().write(true).append(true).open("out.txt").unwrap()
-                            } else {
-                                unsafe { OUTPUT = true; }
-                                OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap()
-                            };
-                            
-                            let value = json!({
-                                "OP" : "start",
-                                "SCN": record.scn.to_string(),
-                                "TIMESTAMP": record.timestamp.to_string(),
-                                "XID": begin.xid.to_string(),
-                            });
-    
-                            output_file.write(value.to_string().as_bytes()).unwrap();
-                            output_file.write(b"\n").unwrap();
+                            self.builder_ptr.process_begin(record.scn, record.timestamp, begin.xid)?;
                         }
                         
                         vector_info_pull.clear();
                     },
                     VectorInfo::OpCode0504(commit) => {
-                        let mut output_file = if unsafe { OUTPUT } {
-                            OpenOptions::new().write(true).append(true).open("out.txt").unwrap()
-                        } else {
-                            unsafe { OUTPUT = true; }
-                            OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap()
-                        };
-                        
-                        let value = json!({
-                            "OP" : if commit.flg & constants::FLAG_KTUCF_ROLLBACK != 0 {"rollback"} else {"commit"},
-                            "SCN": record.scn.to_string(),
-                            "TIMESTAMP": record.timestamp.to_string(),
-                            "XID": commit.xid.to_string(),
-                        });
-
-                        output_file.write(value.to_string().as_bytes()).unwrap();
-                        output_file.write(b"\n").unwrap();
-                        
-                        
+                        let is_rollback = commit.flg & constants::FLAG_KTUCF_ROLLBACK != 0;
+                        self.builder_ptr.process_commit(record.scn, record.timestamp, commit.xid, is_rollback)?;
                         vector_info_pull.clear();
                     },
                     _ => (),

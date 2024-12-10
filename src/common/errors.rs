@@ -26,6 +26,7 @@ pub enum OLRErrorCode {
     ThreadSpawn,
     OracleConnection,
     OracleQuery,
+    SchemaReading,
 }
 
 #[derive(Debug)]
