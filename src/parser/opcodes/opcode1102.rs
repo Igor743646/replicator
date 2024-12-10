@@ -196,6 +196,7 @@ impl<'a> OpCode1102<'a> {
             parser.write_dump(format_args!("BDBA: {} OP: {} FLAGS: {}\n", self.bdba, self.op, self.flags));
         }
 
+        assert!(self.op & 0x1F == constants::OP_IRP, "Operation is not IRP");
         self.kdo_opcode_irp(parser, reader)?;
 
         Ok(())

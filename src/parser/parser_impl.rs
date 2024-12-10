@@ -372,8 +372,8 @@ impl Parser {
                             break;
                         }
 
-                        let prev_offset = reader.cursor();
-                        let redo_record_header = match reader.read_redo_record_header(redo_log_header.oracle_version) {
+                        let prev_offset: usize = reader.cursor();
+                        let redo_record_header: RedoRecordHeader = match reader.read_redo_record_header(redo_log_header.oracle_version) {
                             Ok(x) => x,
                             Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 24))
                         };
@@ -601,6 +601,7 @@ impl RecordAnalizer for Parser {
         let mut vector_info_pull : VecDeque<VectorInfo> = VecDeque::with_capacity(2);
         while !reader.eof() {
             let vector_header: RedoVectorHeader = reader.read_redo_vector_header(version)?;
+            trace!("Analize vector: {:?} offset: {}", vector_header.op_code, reader.cursor());
             reader.align_up(4);
 
             if self.can_dump(1) {
