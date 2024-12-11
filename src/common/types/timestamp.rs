@@ -3,12 +3,6 @@ use std::fmt::{Formatter, Debug, Display};
 #[derive(Default, Copy, Clone)]
 pub struct TypeTimestamp(u32);
 
-impl TypeTimestamp {
-    pub fn new(time : u32) -> Self {
-        Self(time)
-    }
-}
-
 impl From<u32> for TypeTimestamp {
     fn from(val: u32) -> Self {
         Self {0 : val}
@@ -17,8 +11,7 @@ impl From<u32> for TypeTimestamp {
 
 impl Debug for TypeTimestamp where TypeTimestamp : Display {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let temp: &dyn Display = self;
-        temp.fmt(f)
+        Display::fmt(self, f)
     }
 }
 

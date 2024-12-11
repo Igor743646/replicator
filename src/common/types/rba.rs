@@ -15,6 +15,6 @@ impl TypeRBA {
 
 impl Display for TypeRBA {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}.{} (seq.bn.off)", self.sequence, self.block_number, self.offset)
+        write!(f, "{}.{}.{}", self.sequence, self.block_number, self.offset)
     }
 }

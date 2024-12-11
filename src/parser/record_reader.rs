@@ -1,15 +1,15 @@
-use super::{byte_reader::ByteReader, parser_impl::RedoVectorHeader};
+use super::{archive_structs::vector_header::VectorHeader, byte_reader::ByteReader};
 
 #[derive(Debug)]
 pub struct VectorReader<'a> {
-    pub header : RedoVectorHeader,
+    pub header : VectorHeader,
     data : &'a [u8],
     current_pos : usize,
     current_field : usize,
 }
 
 impl<'a> VectorReader<'a> {
-    pub fn new(vector_header : RedoVectorHeader, vector_data : &'a [u8]) -> Self {
+    pub fn new(vector_header : VectorHeader, vector_data : &'a [u8]) -> Self {
         Self {
             header : vector_header,
             data : vector_data,
@@ -18,6 +18,7 @@ impl<'a> VectorReader<'a> {
         }
     }
 
+    #[allow(unused)]
     pub fn reset(&mut self) {
         self.current_pos = 0;
         self.current_field = 0;

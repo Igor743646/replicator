@@ -7,9 +7,7 @@ pub struct TypeUba {
 
 impl TypeUba {
     pub fn new(data : u64) -> Self {
-        Self {
-            data
-        }
+        Self { data }
     }
 }
 

@@ -126,7 +126,8 @@ impl ArchiveDigger for ArchiveDiggerOffline {
 
                 info!("Found sequence: {:?}", sequence);
 
-                parser_queue.push(Reverse(Parser::new(self.context_ptr.clone(), self.builder_ptr.clone(), archive_file, sequence)));
+                let parser = Parser::new(self.context_ptr.clone(), self.builder_ptr.clone(), archive_file, sequence)?;
+                parser_queue.push(Reverse(parser));
             }
         }
 

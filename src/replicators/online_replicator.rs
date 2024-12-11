@@ -36,10 +36,6 @@ impl OnlineReplicator {
     }
 }
 
-impl OnlineReplicator {
-
-}
-
 impl Thread for OnlineReplicator {
     fn run(&self) -> Result<(), OLRError> {
         info!("Run Replicator");

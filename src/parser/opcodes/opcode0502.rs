@@ -62,7 +62,7 @@ impl<'a> OpCode0502<'a> {
         self.flg = flg;
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}; KTUDH] XID: {}\nFlag: {:016b}\n", field_num, self.xid, self.flg));
+            parser.write_dump(format_args!("\n[Change {}; KTUDH] XID: {}\nFlag: {:016b}\n", field_num, self.xid, self.flg))?;
         }
 
         Ok(())
@@ -73,7 +73,7 @@ impl<'a> OpCode0502<'a> {
 
         if parser.can_dump(1) {
             let pdb_id = reader.read_u32()?;
-            parser.write_dump(format_args!("\n[Change {}; PDB] PDB id: {}\n", field_num, pdb_id));
+            parser.write_dump(format_args!("\n[Change {}; PDB] PDB id: {}\n", field_num, pdb_id))?;
         }
         
         Ok(())
@@ -91,7 +91,7 @@ impl<'a> OpCode0502<'a> {
             reader.skip_bytes(4);
             let offset = reader.read_u32()?;
 
-            parser.write_dump(format_args!("\n[Change {}; KTEOP] ext: {} ext size: {} HW: {} offset: {}\n", field_num, ext, ext_size, highwater, offset));
+            parser.write_dump(format_args!("\n[Change {}; KTEOP] ext: {} ext size: {} HW: {} offset: {}\n", field_num, ext, ext_size, highwater, offset))?;
         }
 
         Ok(())

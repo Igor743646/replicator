@@ -1,5 +1,3 @@
-use log::warn;
-
 use super::{VectorInfo, VectorParser};
 use crate::{common::{constants, errors::OLRError, types::{TypeFb, TypeScn, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
@@ -105,7 +103,7 @@ impl<'a> OpCode0501<'a> {
         self.xid = TypeXid::new(usn, slt, seq);
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}; KTUDB] XID: {}", field_num, self.xid));
+            parser.write_dump(format_args!("\n[Change {}; KTUDB] XID: {}", field_num, self.xid))?;
         }
 
         Ok(())
@@ -126,18 +124,18 @@ impl<'a> OpCode0501<'a> {
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("\n[Change {}; KTUBL - {}] OBJ: {} DATAOBJ: {}\nOPC: {}.{} SLT: {}\nFLG: {:016b}\n", 
-                    field_num, reader.data().len(), self.obj, self.data_obj, self.opc.0, self.opc.1, self.slt, self.flg));
+                    field_num, reader.data().len(), self.obj, self.data_obj, self.opc.0, self.opc.1, self.slt, self.flg))?;
 
             let tbl = ["NO", "YES"];
-            parser.write_dump(format_args!(" MULTI BLOCK UNDO HEAD : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOHEAD != 0) as usize]));
-            parser.write_dump(format_args!(" MULTI BLOCK UNDO TAIL : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOTAIL != 0) as usize]));
-            parser.write_dump(format_args!(" LAST BUFFER SPLIT     : {:>3}\n", tbl[(self.flg & constants::FLG_LASTBUFFERSPLIT    != 0) as usize]));
-            parser.write_dump(format_args!(" BEGIN TRANSACTION     : {:>3}\n", tbl[(self.flg & constants::FLG_BEGIN_TRANS        != 0) as usize]));
-            parser.write_dump(format_args!(" USER UNDO DONE        : {:>3}\n", tbl[(self.flg & constants::FLG_USERUNDODDONE      != 0) as usize]));
-            parser.write_dump(format_args!(" IS TEMPORARY OBJECT   : {:>3}\n", tbl[(self.flg & constants::FLG_ISTEMPOBJECT       != 0) as usize]));
-            parser.write_dump(format_args!(" USER ONLY             : {:>3}\n", tbl[(self.flg & constants::FLG_USERONLY           != 0) as usize]));
-            parser.write_dump(format_args!(" TABLESPACE UNDO       : {:>3}\n", tbl[(self.flg & constants::FLG_TABLESPACEUNDO     != 0) as usize]));
-            parser.write_dump(format_args!(" MULTI BLOCK UNDO MID  : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOMID  != 0) as usize]));
+            parser.write_dump(format_args!(" MULTI BLOCK UNDO HEAD : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOHEAD != 0) as usize]))?;
+            parser.write_dump(format_args!(" MULTI BLOCK UNDO TAIL : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOTAIL != 0) as usize]))?;
+            parser.write_dump(format_args!(" LAST BUFFER SPLIT     : {:>3}\n", tbl[(self.flg & constants::FLG_LASTBUFFERSPLIT    != 0) as usize]))?;
+            parser.write_dump(format_args!(" BEGIN TRANSACTION     : {:>3}\n", tbl[(self.flg & constants::FLG_BEGIN_TRANS        != 0) as usize]))?;
+            parser.write_dump(format_args!(" USER UNDO DONE        : {:>3}\n", tbl[(self.flg & constants::FLG_USERUNDODDONE      != 0) as usize]))?;
+            parser.write_dump(format_args!(" IS TEMPORARY OBJECT   : {:>3}\n", tbl[(self.flg & constants::FLG_ISTEMPOBJECT       != 0) as usize]))?;
+            parser.write_dump(format_args!(" USER ONLY             : {:>3}\n", tbl[(self.flg & constants::FLG_USERONLY           != 0) as usize]))?;
+            parser.write_dump(format_args!(" TABLESPACE UNDO       : {:>3}\n", tbl[(self.flg & constants::FLG_TABLESPACEUNDO     != 0) as usize]))?;
+            parser.write_dump(format_args!(" MULTI BLOCK UNDO MID  : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOMID  != 0) as usize]))?;
         }
 
         Ok(())
@@ -156,7 +154,7 @@ impl<'a> OpCode0501<'a> {
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("\n[Change {}; KTBREDO - {}] OP: {}\n", 
-                    field_num, reader.data().len(), ktb_op));
+                    field_num, reader.data().len(), ktb_op))?;
         }
 
         match ktb_op & 0x0F {
@@ -170,7 +168,7 @@ impl<'a> OpCode0501<'a> {
 
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
-                    parser.write_dump(format_args!("Op: F XID: {} UBA: {}\n", self.xid, uba));
+                    parser.write_dump(format_args!("Op: F XID: {} UBA: {}\n", self.xid, uba))?;
                 }
             },
             constants::KTBOP_C => {
@@ -178,12 +176,12 @@ impl<'a> OpCode0501<'a> {
 
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
-                    parser.write_dump(format_args!("Op: C UBA: {}\n", uba));
+                    parser.write_dump(format_args!("Op: C UBA: {}\n", uba))?;
                 }
             },
             constants::KTBOP_Z => {
                 if parser.can_dump(1) {
-                    parser.write_dump(format_args!("Op: Z\n"));
+                    parser.write_dump(format_args!("Op: Z\n"))?;
                 }
             },
             constants::KTBOP_L => {
@@ -197,7 +195,7 @@ impl<'a> OpCode0501<'a> {
                     let uba = reader.read_uba()?;
                     reader.skip_bytes(8);
                     
-                    parser.write_dump(format_args!("Op: L ITL_XID: {} UBA: {}\n", itl_xid, uba));
+                    parser.write_dump(format_args!("Op: L ITL_XID: {} UBA: {}\n", itl_xid, uba))?;
                 }
             },
             constants::KTBOP_R => {
@@ -209,7 +207,7 @@ impl<'a> OpCode0501<'a> {
                     };
                     reader.skip_bytes(8);
 
-                    parser.write_dump(format_args!("Op: R ITC: {}\n", itc));
+                    parser.write_dump(format_args!("Op: R ITC: {}\n", itc))?;
 
                     assert!(reader.data().len() - reader.cursor() >= 12 + itc * 24, "Size of field {} < 12 * itc * 24", reader.data().len());
 
@@ -238,13 +236,13 @@ impl<'a> OpCode0501<'a> {
                         }
                         lck &= 0x0FFF;
 
-                        parser.write_dump(format_args!("[{}]: ITCXID: {} UBA: {} LCK: {} {}: {}\n", i, itc_xid, uba, lck, scnfsc_str, scnfsc));
+                        parser.write_dump(format_args!("[{}]: ITCXID: {} UBA: {} LCK: {} {}: {}\n", i, itc_xid, uba, lck, scnfsc_str, scnfsc))?;
                     }
                 }
             },
             constants::KTBOP_N => {
                 if parser.can_dump(1) {
-                    parser.write_dump(format_args!("Op: N\n"));
+                    parser.write_dump(format_args!("Op: N\n"))?;
                 }
             },
             _ => {
@@ -254,7 +252,7 @@ impl<'a> OpCode0501<'a> {
 
         if ktb_op & constants::KTBOP_BLOCKCLEANOUT != 0 {
             if parser.can_dump(1) {
-                parser.write_dump(format_args!("Block cleanout record\n"));
+                parser.write_dump(format_args!("Block cleanout record\n"))?;
             }
         }
 
@@ -276,21 +274,21 @@ impl<'a> OpCode0501<'a> {
         self.nulls_offset = reader.cursor();
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc));
-            parser.write_dump(format_args!("lb: {} cki: {} size_delt: {}\n", lb, cki, self.size_delt));
-            parser.write_dump(format_args!("nulls: "));
+            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc))?;
+            parser.write_dump(format_args!("lb: {} cki: {} size_delt: {}\n", lb, cki, self.size_delt))?;
+            parser.write_dump(format_args!("nulls: "))?;
 
             let mut nulls = reader.read_u8()?;
             for i in 0 .. self.cc {
                 let bits = 1u8 << (i & 0b111);
 
-                parser.write_dump(format_args!("{}", (nulls & bits != 0) as u8));
+                parser.write_dump(format_args!("{}", (nulls & bits != 0) as u8))?;
                 
                 if bits == 0b10000000 {
                     nulls = reader.read_u8()?;
                 }
             }
-            parser.write_dump(format_args!("\n"));
+            parser.write_dump(format_args!("\n"))?;
             reader.set_cursor(self.nulls_offset)?;
         }
 
@@ -306,7 +304,7 @@ impl<'a> OpCode0501<'a> {
         reader.skip_bytes(2);
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("SLOT: {}\n", self.slot));
+            parser.write_dump(format_args!("SLOT: {}\n", self.slot))?;
         }
 
         Ok(())
@@ -319,7 +317,7 @@ impl<'a> OpCode0501<'a> {
         reader.skip_bytes(2);
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("SLOT: {}\n", self.slot));
+            parser.write_dump(format_args!("SLOT: {}\n", self.slot))?;
         }
 
         Ok(())
@@ -340,8 +338,8 @@ impl<'a> OpCode0501<'a> {
         self.nulls_offset = reader.cursor();
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc));
-            parser.write_dump(format_args!("lock: {} ckix: {} tabn: {} ncol: {}\n", lock, ckix, tabn, ncol));
+            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc))?;
+            parser.write_dump(format_args!("lock: {} ckix: {} tabn: {} ncol: {}\n", lock, ckix, tabn, ncol))?;
         }
 
         assert!(reader.data().len() >= 26 + ((self.cc as usize + 7) / 8), "Size of field {} < 26 + (cc + 7) / 8", reader.data().len());
@@ -362,7 +360,7 @@ impl<'a> OpCode0501<'a> {
         self.nulls_offset = reader.cursor();
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc));
+            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc))?;
         }
 
         assert!(reader.data().len() >= 45 + ((self.cc as usize + 7) / 8), "Size of field {} < 45 + (cc + 7) / 8", reader.data().len());
@@ -380,8 +378,8 @@ impl<'a> OpCode0501<'a> {
         self.slots_offset = reader.cursor();
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("NROW: {}\n", self.nrow));
-            parser.write_dump(format_args!("lock: {} tabn: {}\n", lock, tabn));
+            parser.write_dump(format_args!("NROW: {}\n", self.nrow))?;
+            parser.write_dump(format_args!("lock: {} tabn: {}\n", lock, tabn))?;
         }
 
         Ok(())
@@ -398,8 +396,8 @@ impl<'a> OpCode0501<'a> {
 
         if parser.can_dump(1) {
             let tbl = ["000", "IUR", "IRP", "DRP", "LKR", "URP", "ORP", "MFC", "CFA", "CKI", "SKL", "QMI", "QMD", "013", "DSC", "015", "LMN", "LLB", "018", "019", "SHK", "021", "CMP", "DCU", "MRK"];
-            parser.write_dump(format_args!("\n[Change {}; KTBOPCODE - {}] OP: {}\n", field_num, reader.data().len(), tbl.get((self.op & 0x1F) as usize).or(Some(&"Unknown operation")).unwrap()));
-            parser.write_dump(format_args!("BDBA: {} OP: {} FLAGS: {}\n", self.bdba, self.op, self.flags));
+            parser.write_dump(format_args!("\n[Change {}; KTBOPCODE - {}] OP: {}\n", field_num, reader.data().len(), tbl.get((self.op & 0x1F) as usize).or(Some(&"Unknown operation")).unwrap()))?;
+            parser.write_dump(format_args!("BDBA: {} OP: {} FLAGS: {}\n", self.bdba, self.op, self.flags))?;
         }
 
         match self.op & 0x1F {
@@ -444,7 +442,7 @@ impl<'a> OpCode0501<'a> {
         assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("{}", reader.to_hex_dump()));
+            parser.write_dump(format_args!("{}", reader.to_hex_dump()))?;
         }
 
         Ok(())
@@ -480,10 +478,10 @@ impl<'a> OpCode0501<'a> {
                             let column_reader = self.reader.next().unwrap();
 
                             if nulls & mask == 0 {
-                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", column_reader.data().len(), column_reader.data()));
+                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", column_reader.data().len(), column_reader.data()))?;
                             } else {
                                 assert!(column_reader.data().len() == 0, "Size of field {} != 0", column_reader.data().len());
-                                parser.write_dump(format_args!("Col: NULL\n"));
+                                parser.write_dump(format_args!("Col: NULL\n"))?;
                             }
                         }
                     } else {
@@ -530,11 +528,11 @@ impl<'a> OpCode0501<'a> {
                             };
 
                             if parser.can_dump(1) {
-                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", column_reader.data().len(), column_reader.data()));
+                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", column_reader.data().len(), column_reader.data()))?;
                             }
                         } else {
                             if parser.can_dump(1) {
-                                parser.write_dump(format_args!("Col: NULL\n"));
+                                parser.write_dump(format_args!("Col: NULL\n"))?;
                             }
                         }
 
@@ -563,7 +561,7 @@ impl<'a> OpCode0501<'a> {
                         let jcc = data_reader.read_u8()?;
                         let tl = sizes_reader.read_u16()?;
 
-                        parser.write_dump(format_args!("FB: {} LB: {} TL: {} JCC: {}\n", fb, lb, tl, jcc));
+                        parser.write_dump(format_args!("FB: {} LB: {} TL: {} JCC: {}\n", fb, lb, tl, jcc))?;
 
                         if self.op & 64 != 0 {
                             if parser.version().unwrap() < constants::REDO_VERSION_12_2 {
@@ -582,7 +580,7 @@ impl<'a> OpCode0501<'a> {
                             }
 
                             if !is_null {
-                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", size, &data_reader.data()[data_reader.cursor() .. data_reader.cursor() + size as usize] ));
+                                parser.write_dump(format_args!("Col [{}]: {:02X?}\n", size, &data_reader.data()[data_reader.cursor() .. data_reader.cursor() + size as usize] ))?;
                                 data_reader.skip_bytes(size as usize);
                             }
                         }

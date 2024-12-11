@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::OpenOptions, io::Write, sync::Arc};
 
 use log::info;
-use oracle::{sql_type::ToSql, Connection, ErrorKind, ResultSet, Statement};
+use oracle::{sql_type::ToSql, Connection, ErrorKind, Statement};
 use serde::{ser::SerializeStruct, Serialize};
 use serde_json;
 use crate::{common::errors::OLRError, olr_err};

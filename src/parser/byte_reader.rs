@@ -4,7 +4,7 @@ use log::error;
 
 use crate::{common::{constants::{self, REDO_VERSION_12_1}, errors::OLRError, types::{TypeRBA, TypeScn, TypeTimestamp, TypeUba}}, olr_perr};
 
-use super::parser_impl::{BlockHeader, RedoRecordHeader, RedoRecordHeaderExpansion, RedoVectorHeader, RedoVectorHeaderExpansion};
+use super::archive_structs::{block_header::BlockHeader, record_header::{RecordHeader, RecordHeaderExpansion}, vector_header::{VectorHeader, VectorHeaderExpansion}};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -323,10 +323,10 @@ impl<'a> ByteReader<'a> {
         Ok(res)
     }
 
-    pub fn read_redo_record_header(&mut self, version : u32) -> Result<RedoRecordHeader, OLRError> {
+    pub fn read_redo_record_header(&mut self, version : u32) -> Result<RecordHeader, OLRError> {
         self.validate_size(24)?;
 
-        let mut result = RedoRecordHeader::default();
+        let mut result = RecordHeader::default();
 
         unsafe {
             result.record_size = self.read_u32_unchecked();
@@ -346,7 +346,7 @@ impl<'a> ByteReader<'a> {
 
             if result.vld & 0x04 != 0 {
                 self.validate_size(68)?;
-                let mut exp = RedoRecordHeaderExpansion::default();
+                let mut exp = RecordHeaderExpansion::default();
                 exp.record_num = self.read_u16_unchecked();
                 exp.record_num_max = self.read_u16_unchecked();
                 exp.records_count = self.read_u32_unchecked();
@@ -362,14 +362,14 @@ impl<'a> ByteReader<'a> {
         Ok(result)
     }
 
-    pub fn read_redo_vector_header(&mut self, version : u32) -> Result<RedoVectorHeader, OLRError> {
+    pub fn read_redo_vector_header(&mut self, version : u32) -> Result<VectorHeader, OLRError> {
         if version >= constants::REDO_VERSION_12_1 {
             self.validate_size(24 + 8 + 2)?;
         } else {
             self.validate_size(24 + 2)?;
         }
 
-        let mut result = RedoVectorHeader::default();
+        let mut result = VectorHeader::default();
 
         unsafe {
             result.op_code.0 = self.read_u8_unchecked();
@@ -384,7 +384,7 @@ impl<'a> ByteReader<'a> {
             self.skip_bytes(2);
 
             if version >= constants::REDO_VERSION_12_1 {
-                let mut ext = RedoVectorHeaderExpansion::default();
+                let mut ext = VectorHeaderExpansion::default();
                 ext.container_id = self.read_u16_unchecked();
                 self.skip_bytes(2);
                 ext.flag = self.read_u16_unchecked();

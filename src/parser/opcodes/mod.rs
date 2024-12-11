@@ -1,10 +1,8 @@
 use std::fmt::{Display, Formatter};
 
-use opcode0501::OpCode0501;
-
 use crate::common::errors::OLRError;
 
-use super::{parser_impl::{Parser, RedoVectorHeader}, record_reader::VectorReader};
+use super::{parser_impl::Parser, record_reader::VectorReader};
 pub mod opcode0502;
 pub mod opcode0520;
 pub mod opcode0504;

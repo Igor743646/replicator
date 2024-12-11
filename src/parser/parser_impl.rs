@@ -1,8 +1,6 @@
 use core::fmt;
 use std::collections::VecDeque;
-use std::fmt::Formatter;
-use std::fmt::Display;
-use std::fs::{File, Metadata};
+use std::fs::{File, Metadata, OpenOptions};
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
@@ -14,9 +12,11 @@ use log::{info, trace, warn};
 use crate::builder::JsonBuilder;
 use crate::common::constants;
 use crate::common::thread::spawn;
-use crate::common::types::{TypeRBA, TypeRecordScn, TypeScn, TypeTimestamp};
+use crate::common::types::TypeTimestamp;
 use crate::ctx::Ctx;
 use crate::olr_perr;
+use crate::parser::archive_structs::record_header::RecordHeader;
+use crate::parser::archive_structs::vector_header::VectorHeader;
 use crate::parser::fs_reader::{Reader, ReaderMessage};
 use crate::parser::opcodes::opcode0501::OpCode0501;
 use crate::parser::opcodes::opcode0502::OpCode0502;
@@ -30,181 +30,9 @@ use crate::parser::records_manager::Record;
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
 use crate::common::errors::OLRErrorCode::*;
 
+use super::archive_structs::redolog_header::RedoLogHeader;
 use super::byte_reader::{self, ByteReader};
 use super::records_manager::RecordsManager;
-
-#[derive(Debug, Default)]
-pub struct BlockHeader {
-    pub block_flag  : u8,
-    pub file_type   : u8,
-    pub rba         : TypeRBA,
-    pub checksum    : u16,
-}
-
-impl Display for BlockHeader {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Block header: 0x{:02X}{:02X} RBA: {}, Checksum: 0x{:04X}", self.block_flag, self.file_type, self.rba, self.checksum)
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct RedoLogHeader {
-    pub block_header : BlockHeader,
-    pub oracle_version : u32,
-    pub database_id : u32,
-    pub database_name : String,
-    pub control_sequence : u32,
-    pub file_size : u32,
-    pub file_number : u16,
-    pub activation_id : u32,
-    pub description : String,
-    pub blocks_count : u32,
-    pub resetlogs_id : TypeTimestamp,
-    pub resetlogs_scn : TypeScn,
-    pub hws : u32,
-    pub thread : u16,
-    pub first_scn : TypeScn,
-    pub first_time : TypeTimestamp,
-    pub next_scn : TypeScn,
-    pub next_time : TypeTimestamp,
-    pub eot : u8,
-    pub dis : u8,
-    pub zero_blocks : u8,
-    pub format_id : u8,
-    pub enabled_scn : TypeScn,
-    pub enabled_time : TypeTimestamp,
-    pub thread_closed_scn : TypeScn,
-    pub thread_closed_time : TypeTimestamp,
-    pub misc_flags : u32,
-    pub terminal_recovery_scn : TypeScn,
-    pub terminal_recovery_time : TypeTimestamp,
-    pub most_recent_scn : TypeScn,
-    pub largest_lwn : u32,
-    pub real_next_scn : TypeScn,
-    pub standby_apply_delay : u32,
-    pub prev_resetlogs_scn : TypeScn,
-    pub prev_resetlogs_id : TypeTimestamp,
-    pub misc_flags_2 : u32,
-    pub standby_log_close_time : TypeTimestamp,
-    pub thr : i32,
-    pub seq2 : i32,
-    pub scn2 : TypeScn,
-    pub redo_log_key : [u8; 16],
-    pub redo_log_key_flag : u16,
-}
-
-#[derive(Debug, Default)]
-pub struct RedoRecordHeaderExpansion {
-    pub record_num          : u16,
-    pub record_num_max      : u16,
-    pub records_count       : u32,
-    pub records_scn         : TypeScn,
-    pub scn1                : TypeScn,
-    pub scn2                : TypeScn,
-    pub records_timestamp   : TypeTimestamp,
-}
-
-impl Display for RedoRecordHeaderExpansion {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Num/NumMax: {}/{} Records count: {}\nRecord SCN: {}\nSCN1: {}\nSCN2: {}\nTimestamp: {}", 
-                self.record_num, self.record_num_max, self.records_count, self.records_scn, self.scn1, self.scn2, self.records_timestamp)
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct RedoRecordHeader {
-    pub record_size : u32,
-    pub vld : u8,
-    pub scn : TypeRecordScn,
-    pub sub_scn : u16,
-    pub container_uid : Option<u32>,
-    pub expansion : Option<RedoRecordHeaderExpansion>,
-}
-
-impl Display for RedoRecordHeader {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Record size: {} VLD: {:02X}\nRecord SCN: {} Sub SCN: {}\n", self.record_size, self.vld, self.scn, self.sub_scn)?;
-        if let Some(con_id) = self.container_uid {
-            write!(f, "Container id: {}\n", con_id)?;
-        }
-        if let Some(ref ext) = self.expansion {
-            write!(f, "{}\n", ext)?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct RedoVectorHeaderExpansion {
-    pub container_id : u16,
-    pub flag : u16,
-}
-
-#[derive(Debug, Default)]
-pub struct RedoVectorHeader {
-    pub op_code : (u8, u8),
-    pub class : u16,
-    pub afn : u16, // absolute file number
-    pub dba : u32,
-    pub vector_scn : TypeScn,
-    pub seq : u8,  // sequence number
-    pub typ : u8,  // change type
-    pub expansion : Option<RedoVectorHeaderExpansion>,
-
-    pub fields_count : u16,
-    pub fields_sizes : Vec<u16>,
-}
-
-impl Display for RedoVectorHeader {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let opcode_desc = match self.op_code {
-            (5, 1) => "Operation info (undo block redo)",
-            (5, 2) => "Begin transaction / iternal (undo header redo)",
-            (5, 4) => "Commit / rollback",
-            (5, 6) => "Rollback record index in an undo block",
-            (5, 11) => "Rollback DBA in transaction table entry",
-            (5, 19) | (5, 20) => "Session info",
-            (10, 2) => "Insert leaf row",
-            (10, 8) => "Initialize new leaf block",
-            (10, 18) => "Update keydata in row",
-            (11, 2) => "Insert row piece",
-            (11, 3) => "Delete row piece",
-            (11, 4) => "Lock row piece",
-            (11, 5) => "Update row piece",
-            (11, 6) => "Overwrite row piece",
-            (11, 8) => "Change forwarding address",
-            (11, 11) => "Insert multiply rows",
-            (11, 12) => "Delete multiply rows",
-            (11, 16) => "Logminer support - RM for rowpiece with only logminer columns",
-            (11, 17) => "Update multiply rows",
-            (11, 22) => "Logminer support",
-            (19, 1) => "Direct block logging",
-            (24, 1) => "Common portion of the ddl",
-            (26, 2) => "Generic lob redo",
-            (26, 6) => "Direct lob direct-load redo",
-
-            (4, _) => "Transaction block",
-            (5, _) => "Transaction undo",
-            (10, _) => "Transaction index",
-            (13, _) => "Transaction segment",
-            (14, _) => "Transaction extent",
-            (17, _) => "Recovery (REDO)",
-            (18, _) => "Hot Backup Log Blocks",
-            (22, _) => "Tablespace bitmapped file operations",
-            (23, _) => "Write behind logging of blocks",
-            (24, _) => "Logminer related (DDL or OBJV# redo)",
-            (_, _) => "Unknown",
-        };
-        write!(f, "OpCode: {}.{} ({})\n", self.op_code.0, self.op_code.1, opcode_desc)?;
-        write!(f, "Class: {} Absolute file number: {} DBA: {}\n", self.class, self.afn, self.dba)?;
-        write!(f, "Vector SCN: {} SEQ: {} TYP: {}\n", self.vector_scn, self.seq, self.typ)?;
-        if let Some(ref ext) = self.expansion {
-            write!(f, "Container id: {} Flag: {}\n", ext.container_id, ext.flag)?;
-        }
-        write!(f, "Fields count: {}\n", self.fields_count)?;
-        write!(f, "Fields sizes: {}\n", self.fields_sizes.iter().map(|x| -> String {format!("{} ", x)}).collect::<String>())
-    }
-}
 
 #[derive(Debug)]
 pub struct Parser {
@@ -217,7 +45,6 @@ pub struct Parser {
     version         : Option<u32>,
     endian          : Option<byte_reader::Endian>,
     metadata        : Option<Metadata>,
-    dump_log_level  : u64,
     dump_file       : Option<File>,
 
     records_manager : RecordsManager,
@@ -248,15 +75,8 @@ impl Ord for Parser {
 }
 
 impl Parser {
-    pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, file_path : PathBuf, sequence : TypeSeq) -> Self {
-        let mut dump_file: Option<File> = None;
-        if context_ptr.dump.level > 0 {
-            let directory: PathBuf = PathBuf::new().join(context_ptr.dump.path.as_str());
-            let dump_path: PathBuf = directory.join(format!("dump-{}.ansi", sequence));
-            std::fs::create_dir_all(directory).unwrap();
-            dump_file = Some(File::create(dump_path).unwrap());
-        }
-        Self {
+    pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, file_path : PathBuf, sequence : TypeSeq) -> Result<Self, OLRError> {
+        let mut result = Self {
             context_ptr: context_ptr.clone(), 
             builder_ptr,
             file_path, 
@@ -265,18 +85,36 @@ impl Parser {
             version : None,
             endian : None, 
             metadata : None,
-            dump_log_level : context_ptr.dump.level,
-            dump_file,
+            dump_file : None,
             records_manager : RecordsManager::new(context_ptr.clone()),
+        };
+
+        if context_ptr.dump.level > 0 {
+            let directory_path: PathBuf = PathBuf::new().join(context_ptr.dump.path.as_str());
+            let dump_file_path: PathBuf = directory_path.join(format!("dump-{}.ansi", sequence));
+            if let Err(err) = std::fs::create_dir_all(&directory_path) {
+                return olr_err!(CreateDir, "Can not create directory: {:?}. Error: {}", directory_path, err);
+            }
+            match OpenOptions::new().create(true).write(true).open(dump_file_path) {
+                Err(err) => return olr_err!(CreateDir, "Can not create directory: {:?}. Error: {}", directory_path, err),
+                Ok(file) => result.dump_file = Some(file),
+            }
         }
+        
+        Ok(result)
     }
 
     pub fn can_dump(&self, level : u64) -> bool {
-        level <= self.dump_log_level
+        level <= self.context_ptr.dump.level
     }
 
-    pub fn write_dump(&mut self, fmt: fmt::Arguments<'_>) {
-        self.dump_file.as_ref().unwrap().write_fmt(fmt).unwrap();
+    pub fn write_dump(&mut self, fmt: fmt::Arguments<'_>) -> Result<(), OLRError> {
+        if let Some(ref mut file) = self.dump_file {
+            if let Err(err) = file.write_fmt(fmt) {
+                return olr_err!(FileWriting, "Can not write dump in file. Error: {}", err);
+            }
+        }
+        Ok(())
     }
 
     pub fn sequence(&self) -> TypeSeq {
@@ -373,7 +211,7 @@ impl Parser {
                         }
 
                         let prev_offset: usize = reader.cursor();
-                        let redo_record_header: RedoRecordHeader = match reader.read_redo_record_header(redo_log_header.oracle_version) {
+                        let redo_record_header: RecordHeader = match reader.read_redo_record_header(redo_log_header.oracle_version) {
                             Ok(x) => x,
                             Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 24))
                         };
@@ -600,7 +438,7 @@ impl RecordAnalizer for Parser {
 
         let mut vector_info_pull : VecDeque<VectorInfo> = VecDeque::with_capacity(2);
         while !reader.eof() {
-            let vector_header: RedoVectorHeader = reader.read_redo_vector_header(version)?;
+            let vector_header: VectorHeader = reader.read_redo_vector_header(version)?;
             trace!("Analize vector: {:?} offset: {}", vector_header.op_code, reader.cursor());
             reader.align_up(4);
 

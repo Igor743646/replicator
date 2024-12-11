@@ -73,10 +73,10 @@ impl<'a> OpCode1102<'a> {
 
                     if parser.can_dump(1) {
                         if nulls & mask == 0 {
-                            parser.write_dump(format_args!("Col [{}]: {:02X?}\n", field_reader.data().len(), field_reader.data()));
+                            parser.write_dump(format_args!("Col [{}]: {:02X?}\n", field_reader.data().len(), field_reader.data()))?;
                         } else {
                             assert!(field_reader.data().len() == 0, "Size of field {} != 0", field_reader.data().len());
-                            parser.write_dump(format_args!("Col: NULL\n"));
+                            parser.write_dump(format_args!("Col: NULL\n"))?;
                         }
                     }
                 }
@@ -99,7 +99,7 @@ impl<'a> OpCode1102<'a> {
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("\n[Change {}; KTBREDO - {}] OP: {}\n", 
-                    field_num, reader.data().len(), ktb_op));
+                    field_num, reader.data().len(), ktb_op))?;
         }
 
         match ktb_op & 0x0F {
@@ -113,7 +113,7 @@ impl<'a> OpCode1102<'a> {
 
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
-                    parser.write_dump(format_args!("Op: F XID: {} UBA: {}\n", self.xid, uba));
+                    parser.write_dump(format_args!("Op: F XID: {} UBA: {}\n", self.xid, uba))?;
                 }
             },
             constants::KTBOP_C => {
@@ -121,12 +121,12 @@ impl<'a> OpCode1102<'a> {
 
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
-                    parser.write_dump(format_args!("Op: C UBA: {}\n", uba));
+                    parser.write_dump(format_args!("Op: C UBA: {}\n", uba))?;
                 }
             },
             constants::KTBOP_Z => {
                 if parser.can_dump(1) {
-                    parser.write_dump(format_args!("Op: Z\n"));
+                    parser.write_dump(format_args!("Op: Z\n"))?;
                 }
             },
             constants::KTBOP_L => {
@@ -140,7 +140,7 @@ impl<'a> OpCode1102<'a> {
                     let uba = reader.read_uba()?;
                     reader.skip_bytes(8);
                     
-                    parser.write_dump(format_args!("Op: L ITL_XID: {} UBA: {}\n", itl_xid, uba));
+                    parser.write_dump(format_args!("Op: L ITL_XID: {} UBA: {}\n", itl_xid, uba))?;
                 }
             },
             _ => {
@@ -167,21 +167,21 @@ impl<'a> OpCode1102<'a> {
         self.nulls_offset = reader.cursor();
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc));
-            parser.write_dump(format_args!("lb: {} cki: {} size_delt: {}\n", lb, cki, self.size_delt));
-            parser.write_dump(format_args!("nulls: "));
+            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc))?;
+            parser.write_dump(format_args!("lb: {} cki: {} size_delt: {}\n", lb, cki, self.size_delt))?;
+            parser.write_dump(format_args!("nulls: "))?;
 
             let mut nulls = reader.read_u8()?;
             for i in 0 .. self.cc {
                 let bits = 1u8 << (i & 0b111);
 
-                parser.write_dump(format_args!("{}", (nulls & bits != 0) as u8));
+                parser.write_dump(format_args!("{}", (nulls & bits != 0) as u8))?;
                 
                 if bits == 0b10000000 {
                     nulls = reader.read_u8()?;
                 }
             }
-            parser.write_dump(format_args!("\n"));
+            parser.write_dump(format_args!("\n"))?;
             reader.set_cursor(self.nulls_offset)?;
         }
 
@@ -200,8 +200,8 @@ impl<'a> OpCode1102<'a> {
         reader.skip_bytes(4);
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}; KTBOPCODE - {}] OP: IRP\n", field_num, reader.data().len()));
-            parser.write_dump(format_args!("BDBA: {} OP: {} FLAGS: {}\n", self.bdba, self.op, self.flags));
+            parser.write_dump(format_args!("\n[Change {}; KTBOPCODE - {}] OP: IRP\n", field_num, reader.data().len()))?;
+            parser.write_dump(format_args!("BDBA: {} OP: {} FLAGS: {}\n", self.bdba, self.op, self.flags))?;
         }
 
         assert!(self.op & 0x1F == constants::OP_IRP, "Operation is not IRP");

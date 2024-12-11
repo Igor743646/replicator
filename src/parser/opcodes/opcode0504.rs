@@ -42,7 +42,7 @@ impl<'a> OpCode0504<'a> {
         }
 
         if parser.can_dump(1) && (self.flg & constants::FLAG_KTUCF_ROLLBACK != 0) {
-            parser.write_dump(format_args!("\nROLLBACK TRANSACTION\n"));
+            parser.write_dump(format_args!("\nROLLBACK TRANSACTION\n"))?;
         }
 
         Ok(())
@@ -66,7 +66,7 @@ impl<'a> OpCode0504<'a> {
         self.flg = flg;
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}; KTUCM] XID: {}\nFlag: {:08b}\nSRT: {} STA: {}\n", field_num, self.xid, self.flg, srt, sta));
+            parser.write_dump(format_args!("\n[Change {}; KTUCM] XID: {}\nFlag: {:08b}\nSRT: {} STA: {}\n", field_num, self.xid, self.flg, srt, sta))?;
         }
 
         Ok(())
@@ -80,7 +80,7 @@ impl<'a> OpCode0504<'a> {
             let ext = reader.read_u16()?;
             let spc = reader.read_u16()?;
             let fbi = reader.read_u8()?;
-            parser.write_dump(format_args!("\n[Change {}; KTUCF] UBA: {:016X} EXT: {}\nSPC: {} FBI: {}\n", field_num, uba, ext, spc, fbi));
+            parser.write_dump(format_args!("\n[Change {}; KTUCF] UBA: {:016X} EXT: {}\nSPC: {} FBI: {}\n", field_num, uba, ext, spc, fbi))?;
         }
         
         Ok(())

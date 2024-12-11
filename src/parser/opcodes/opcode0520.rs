@@ -82,7 +82,7 @@ impl<'a> OpCode0520<'a> {
         }
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}] session number: {} serial number: {}", field_num, self.session_number, self.serial_number));
+            parser.write_dump(format_args!("\n[Change {}] session number: {} serial number: {}", field_num, self.session_number, self.serial_number))?;
         }
 
         Ok(())
@@ -92,7 +92,7 @@ impl<'a> OpCode0520<'a> {
         
         if parser.can_dump(1) {
             let data = reader.read_bytes(reader.data().len() as usize)?;
-            parser.write_dump(format_args!("\n[Change {}] unknown attribute: {}", field_num, String::from_utf8(data).unwrap_or_default()));
+            parser.write_dump(format_args!("\n[Change {}] unknown attribute: {}", field_num, String::from_utf8(data).unwrap_or_default()))?;
         }
 
         Ok(())
@@ -105,7 +105,7 @@ impl<'a> OpCode0520<'a> {
             let flg1 = reader.read_u16()?;
             reader.skip_bytes(2);
             let flg2 = reader.read_u16()?;
-            parser.write_dump(format_args!("\n[Change {}] Flg 1: {} Flg 2: {}", field_num, flg1, flg2));
+            parser.write_dump(format_args!("\n[Change {}] Flg 1: {} Flg 2: {}", field_num, flg1, flg2))?;
 
             reader.skip_bytes(reader.data().len() as usize - 6);
         }
@@ -119,7 +119,7 @@ impl<'a> OpCode0520<'a> {
         self.version = reader.read_u32()?;
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}] Version: {}", field_num, self.version));
+            parser.write_dump(format_args!("\n[Change {}] Version: {}", field_num, self.version))?;
         }
 
         Ok(())
@@ -131,7 +131,7 @@ impl<'a> OpCode0520<'a> {
         self.audit_session_id = reader.read_u32()?;
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}] Audit session id: {}", field_num, self.audit_session_id));
+            parser.write_dump(format_args!("\n[Change {}] Audit session id: {}", field_num, self.audit_session_id))?;
         }
 
         Ok(())
@@ -144,7 +144,7 @@ impl<'a> OpCode0520<'a> {
     fn session_attribute_7(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         if parser.can_dump(1) {
             let client_id = String::from_utf8(reader.read_bytes(reader.data().len() as usize)?).unwrap_or_default();
-            parser.write_dump(format_args!("\n[Change {}] Client id: {}", field_num, client_id));
+            parser.write_dump(format_args!("\n[Change {}] Client id: {}", field_num, client_id))?;
         }
         Ok(())
     }
@@ -153,7 +153,7 @@ impl<'a> OpCode0520<'a> {
         self.login_username = String::from_utf8(reader.read_bytes(reader.data().len() as usize)?).unwrap_or_default();
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}] Login username: {}\n", field_num, self.login_username));
+            parser.write_dump(format_args!("\n[Change {}] Login username: {}\n", field_num, self.login_username))?;
         }
 
         Ok(())

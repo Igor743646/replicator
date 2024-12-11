@@ -1,10 +1,9 @@
-use std::{collections::HashSet, ops::Deref, sync::{Arc, Mutex, MutexGuard}};
+use std::{collections::HashSet, sync::{Arc, Mutex, MutexGuard}};
 
-use log::{debug, info, warn};
-use oracle::Connection;
+use log::{debug, warn};
 
-use crate::{common::{constants, errors::OLRError, types::{TypeConId, TypeScn, TypeSeq}}, ctx::Ctx, locales::Locales, olr_err, oradefs::{db_object::DataBaseObject, oracle_schema::{OracleSchema, OracleSchemaResource}}};
-use crate::common::OLRErrorCode::OracleConnection;
+use crate::{common::{errors::OLRError, types::{TypeConId, TypeScn, TypeSeq}}, ctx::Ctx, locales::Locales, oradefs::{db_object::DataBaseObject, oracle_schema::{OracleSchema, OracleSchemaResource}}};
+
 #[derive(Debug)]
 pub struct Metadata {
     context_ptr : Arc<Ctx>,
