@@ -74,8 +74,6 @@ impl<'a> OpCode0502<'a> {
         if parser.can_dump(1) {
             let pdb_id = reader.read_u32()?;
             parser.write_dump(format_args!("\n[Change {}; PDB] PDB id: {}\n", field_num, pdb_id));
-        } else {
-            reader.skip_bytes(4);
         }
         
         Ok(())
@@ -94,8 +92,6 @@ impl<'a> OpCode0502<'a> {
             let offset = reader.read_u32()?;
 
             parser.write_dump(format_args!("\n[Change {}; KTEOP] ext: {} ext size: {} HW: {} offset: {}\n", field_num, ext, ext_size, highwater, offset));
-        } else {
-            reader.skip_bytes(36);
         }
 
         Ok(())

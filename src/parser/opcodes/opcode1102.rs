@@ -8,7 +8,11 @@ pub struct OpCode1102<'a> {
     pub cc : u8,
     pub size_delt : u16,
     pub slot : u16,
+
+    pub nulls_field : usize,
     pub nulls_offset : usize,
+
+    pub data_field : usize,
 
     pub bdba : u32,
     pub op : u8,
@@ -25,7 +29,9 @@ impl<'a> OpCode1102<'a> {
             cc : Default::default(),
             size_delt : Default::default(),
             slot : Default::default(),
+            nulls_field : Default::default(),
             nulls_offset : Default::default(),
+            data_field : Default::default(),
             bdba : Default::default(),
             op : Default::default(),
             flags : Default::default(),
@@ -49,6 +55,7 @@ impl<'a> OpCode1102<'a> {
             return Ok(());
         };
 
+        self.data_field = 2;
         if let Some(mut field_reader) = self.reader.next() {
             if field_reader.data().len() == self.size_delt as usize && self.cc != 1 {
                 std::unimplemented!("Compressed data");
@@ -144,7 +151,7 @@ impl<'a> OpCode1102<'a> {
         Ok(())
     }
 
-    fn kdo_opcode_irp(&mut self, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
+    fn kdo_opcode_irp(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() >= 48, "Size of field {} < 48", reader.data().len());
 
         self.fb = reader.read_u8()?;
@@ -156,6 +163,7 @@ impl<'a> OpCode1102<'a> {
         self.slot = reader.read_u16()?;
         reader.skip_bytes(1);
 
+        self.nulls_field = field_num;
         self.nulls_offset = reader.cursor();
 
         if parser.can_dump(1) {
@@ -197,9 +205,19 @@ impl<'a> OpCode1102<'a> {
         }
 
         assert!(self.op & 0x1F == constants::OP_IRP, "Operation is not IRP");
-        self.kdo_opcode_irp(parser, reader)?;
+        self.kdo_opcode_irp(parser, reader, field_num)?;
 
         Ok(())
+    }
+
+    pub fn get_nulls_field(&self) -> ByteReader {
+        let mut res = self.reader.get_field_nth(self.nulls_field);
+        res.set_cursor(self.nulls_offset).unwrap();
+        res
+    }
+
+    pub fn get_data_field(&self, n : usize) -> ByteReader {
+        self.reader.get_field_nth(self.data_field + n)
     }
 }
 

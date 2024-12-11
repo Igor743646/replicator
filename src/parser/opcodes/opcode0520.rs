@@ -93,8 +93,6 @@ impl<'a> OpCode0520<'a> {
         if parser.can_dump(1) {
             let data = reader.read_bytes(reader.data().len() as usize)?;
             parser.write_dump(format_args!("\n[Change {}] unknown attribute: {}", field_num, String::from_utf8(data).unwrap_or_default()));
-        } else {
-            reader.skip_bytes(reader.data().len() as usize);
         }
 
         Ok(())
@@ -110,8 +108,6 @@ impl<'a> OpCode0520<'a> {
             parser.write_dump(format_args!("\n[Change {}] Flg 1: {} Flg 2: {}", field_num, flg1, flg2));
 
             reader.skip_bytes(reader.data().len() as usize - 6);
-        } else {
-            reader.skip_bytes(reader.data().len() as usize);
         }
 
         Ok(())

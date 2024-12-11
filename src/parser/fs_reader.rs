@@ -1,7 +1,7 @@
 use std::{fs::{File, Metadata}, io::{Read, Seek}, path::PathBuf, sync::Arc, time};
 
 use crossbeam::channel::Sender;
-use log::{debug, info, warn, error};
+use log::{debug, info, warn};
 
 use crate::{common::{errors::OLRError, memory_pool::MemoryChunk, thread::Thread}, ctx::Ctx, olr_err, olr_perr};
 use crate::common::OLRErrorCode::*;

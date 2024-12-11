@@ -1,4 +1,4 @@
-use std::{fs::OpenOptions, io::Write, sync::{Arc, Mutex}};
+use std::{collections::BTreeMap, fs::OpenOptions, io::Write, sync::{Arc, Mutex}};
 use log::{debug, warn};
 
 use formats::BuilderFormats;
@@ -51,14 +51,12 @@ impl JsonBuilder {
         })
     }
 
-    pub fn process_insert(&self, scn : TypeRecordScn, timestamp : TypeTimestamp, undo : &OpCode0501, redo : &OpCode1102) -> Result<(), OLRError> {
+    pub fn process_insert(&self, scn : TypeRecordScn, timestamp : TypeTimestamp, undo : OpCode0501, mut redo : OpCode1102) -> Result<(), OLRError> {
 
         let mut schema = self.metadata_ptr.get_schema();
 
         let mut guard = self.queue.lock().unwrap();
         
-        let mut output_file = OpenOptions::new().write(true).append(true).open("out.txt").unwrap();
-
         let table = schema.get_table(undo.obj)?;
 
         if table.is_none() {
@@ -68,16 +66,39 @@ impl JsonBuilder {
 
         let table = table.unwrap();
 
+        let columns_num = redo.cc;
+        let mut nulls_reader = redo.get_nulls_field();
+        let mut columns = BTreeMap::new();
+
+        let mut nulls: u8 = 0;
+        for i in 0 .. columns_num {
+            let mask = 1u8 << (i & 0b111);
+            if mask == 1 {
+                nulls = nulls_reader.read_u8()?;
+            }
+            
+            let field_reader = redo.get_data_field(i as usize);
+            
+            if nulls & mask == 0 {
+                columns.insert(i, format!("Col {}: {:?}", i, field_reader.data()));
+            } else {
+                columns.insert(i, format!("Col {}: Null", i));
+            }
+        }
+
+
         let value = json!({
             "OP" : "insert",
             "SCN": scn.to_string(),
             "TIMESTAMP": timestamp.to_string(),
             "XID": undo.xid.to_string(),
             "TABLE": table.name(),
+            "DATA": columns,
             "DATA_OBJ": undo.data_obj,
         });
 
-        output_file.write(value.to_string().as_bytes()).unwrap();
+        let mut output_file = OpenOptions::new().write(true).append(true).open("out.txt").unwrap();
+        output_file.write(serde_json::to_string_pretty(&value).unwrap().as_bytes()).unwrap();
         output_file.write(b"\n").unwrap();
 
         Ok(())

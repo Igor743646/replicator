@@ -21,8 +21,8 @@ impl<'a> OpCode0504<'a> {
     }
 
     fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
-        if !(self.reader.header.fields_count > 1 && self.reader.header.fields_count < 5) {
-            return olr_perr!("Opcode: 5.4 Count of field not in [2; 4]. Dump: {}", self.reader.by_ref().map(|x| {x.to_hex_dump()}).collect::<String>());
+        if !(self.reader.header.fields_count > 0 && self.reader.header.fields_count < 5) {
+            return olr_perr!("Opcode: 5.4 Count of field not in [1; 4]. Dump: {}", self.reader.by_ref().map(|x| {x.to_hex_dump()}).collect::<String>());
         }
         
         match self.reader.next() {

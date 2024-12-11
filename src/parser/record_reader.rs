@@ -26,6 +26,16 @@ impl<'a> VectorReader<'a> {
     pub fn eof(&self) -> bool {
         self.current_field >= self.header.fields_count as usize
     }
+
+    pub fn get_field_nth(&self, n : usize) -> ByteReader {
+        let mut fsize = self.header.fields_sizes[0] as usize;
+        let mut pos = 0;
+        for i in 0 .. n {
+            pos += (fsize  + 3) & !3;
+            fsize = self.header.fields_sizes[i + 1] as usize;
+        }
+        ByteReader::from_bytes(&self.data[pos .. pos + fsize])
+    }
 }
 
 impl<'a> Iterator for VectorReader<'a> {

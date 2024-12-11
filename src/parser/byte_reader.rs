@@ -1,4 +1,4 @@
-use std::{fmt::Write, io::{Error, ErrorKind}};
+use std::fmt::Write;
 
 use log::error;
 

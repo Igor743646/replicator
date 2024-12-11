@@ -1,5 +1,5 @@
 use core::fmt;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Display;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::Write;
@@ -615,7 +615,7 @@ impl RecordAnalizer for Parser {
                 })
                 .sum();
 
-            let mut vec_reader = VectorReader::new(
+            let vec_reader = VectorReader::new(
                 vector_header, 
                 &reader.data()[reader.cursor() .. reader.cursor() + vector_body_size]
             );
@@ -637,7 +637,10 @@ impl RecordAnalizer for Parser {
             
             if vector_info_pull.len() == 2 {
 
-                match (vector_info_pull.get(0).unwrap(), vector_info_pull.get(1).unwrap()) {
+                let first = vector_info_pull.pop_front().unwrap();
+                let second = vector_info_pull.pop_front().unwrap();
+
+                match (first, second) {
                     (VectorInfo::OpCode0501(opcode0501), VectorInfo::OpCode1102(opcode1102)) => {
                         self.builder_ptr.process_insert(record.scn, record.timestamp, opcode0501, opcode1102)?;
                     },

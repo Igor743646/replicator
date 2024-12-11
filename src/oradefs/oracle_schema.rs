@@ -1,8 +1,7 @@
-use std::{collections::HashMap, fs::OpenOptions, io::Write, rc::Rc, sync::Arc};
+use std::{collections::HashMap, fs::OpenOptions, io::Write, sync::Arc};
 
-use itertools::Itertools;
 use log::info;
-use oracle::{sql_type::{FromSql, ToSql}, Connection, ErrorKind, ResultSet, Statement};
+use oracle::{sql_type::ToSql, Connection, ErrorKind, ResultSet, Statement};
 use serde::{ser::SerializeStruct, Serialize};
 use serde_json;
 use crate::{common::errors::OLRError, olr_err};
@@ -69,23 +68,33 @@ impl OracleSchema {
             OracleSchemaResource::FromJson(_) => std::unimplemented!(),
             OracleSchemaResource::FromConnection(_) => {
                 self.create_table_from_connection(obj_id)?;
-                Ok(self.tables.get(&obj_id).unwrap().clone())
             }
         }
+
+        Ok(self.tables.get(&obj_id).unwrap().clone())
     }
 
     fn create_table_from_connection(&mut self, obj_id : u32) -> Result<(), OLRError> {
         if let OracleSchemaResource::FromConnection(ref connection) = self.schema_resource {
             let mut stmt: Statement = Self::get_statement(&connection, GET_SYS_OBJ_BY_OBJ)?;
 
-            let object = stmt.query_row_as::<(u32, u32, u32, String, u16, u64)>(&[&obj_id])
-                .map_err(|err| olr_err!(OracleQuery, "Problems with statement \"{}\" executing: {} with param: {}", GET_SYS_OBJ_BY_OBJ, err, obj_id))?;
+            let object = stmt.query_row_as::<(u32, u32, u32, String, u16, u64)>(&[&obj_id]);
 
-            self.tables.insert(obj_id, Some(Arc::new(OracleTable::new(object.3))));
+            match object {
+                Ok(res) => {
+                    self.tables.insert(obj_id, Some(Arc::new(OracleTable::new(res.3))));
+                }
+                Err(err) if err.kind() == ErrorKind::NullValue => {
+                    self.tables.insert(obj_id, None);
+                }
+                Err(err) => {
+                    return olr_err!(OracleQuery, "Problems with statement \"{}\" executing: {} with param: {}", GET_SYS_OBJ_BY_OBJ, err, obj_id);
+                }
+            }
 
             Ok(())
         } else {
-            olr_err!(SchemaReading, "Resource type is not Connection")
+            olr_err!(SchemaReading, "Resource type is not FromConnection")
         }
     }
 
