@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 
 use opcode0501::OpCode0501;
 
@@ -21,7 +21,7 @@ pub enum VectorInfo<'a> {
 }
 
 impl<'a> Display for VectorInfo<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
             VectorInfo::OpCode0501(_) => "opcode0501",
             VectorInfo::OpCode0502(_) => "opcode0502",

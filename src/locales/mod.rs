@@ -1,6 +1,8 @@
 pub mod charset;
 pub mod charset_7bit;
 
+use std::fmt::{Formatter, Debug};
+
 use charset::CharacterMapper;
 use charset_7bit::CharSet7Bit;
 use log::debug;
@@ -14,8 +16,8 @@ pub struct Locales {
     // pub timezone_map    : HashMap<u16, &'static str>,
 }
 
-impl std::fmt::Debug for Locales {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for Locales {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Locales")
     }
 }

@@ -1,4 +1,4 @@
-use std::{alloc::{alloc_zeroed, dealloc, Layout}, collections::VecDeque, fmt::{Display, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
+use std::{alloc::{alloc_zeroed, dealloc, Layout}, collections::VecDeque, fmt::{Display, Formatter, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
 use log::{debug, warn};
 use crate::common::OLRErrorCode::*;
 use crate::olr_err;
@@ -61,7 +61,7 @@ impl Drop for MemoryChunk {
 }
 
 impl Display for MemoryChunk {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let data = self.as_ref();
 
         write!(f, "\n")?;
@@ -76,7 +76,7 @@ impl Display for MemoryChunk {
 }
 
 impl UpperHex for MemoryChunk {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:X}", self.0.as_ptr() as *const u8 as usize)
     }
 }

@@ -1,6 +1,6 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::fmt::Debug;
+use std::fmt::{Formatter, Debug};
 use std::path::PathBuf;
 use std::sync::Arc;
 use log::{info, trace, warn};
@@ -27,7 +27,7 @@ pub struct ArchiveDiggerOffline {
 }
 
 impl Debug for ArchiveDiggerOffline {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "ArchiveDiggerOffline {{ archive_log_format : {}, db_recovery_file_destination : {}, db_name : {}, min_sequence : {:?}}}", self.archive_log_format, self.db_recovery_file_destination, self.db_name, self.min_sequence)
     }
 }

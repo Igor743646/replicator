@@ -1,4 +1,5 @@
 use std::{backtrace::Backtrace, error::Error};
+use std::fmt::{Formatter, Debug, Display};
 
 #[derive(Debug, Copy, Clone)]
 pub enum OLRErrorCode {
@@ -59,8 +60,8 @@ impl<T> Into<Result<T, OLRError>> for OLRError {
     }
 }
 
-impl std::fmt::Display for OLRError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for OLRError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "[Src: {}:{}] Code: \x1b[91m{:06}\x1b[0m Description: \x1b[95m{}\x1b[0m Backtrace: {}", self.source, self.line, self.code as i32, self.message, self.backtrace)
     }
 }

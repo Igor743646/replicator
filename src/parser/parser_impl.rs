@@ -1,15 +1,15 @@
 use core::fmt;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
+use std::fmt::Formatter;
 use std::fmt::Display;
-use std::fs::{File, Metadata, OpenOptions};
+use std::fs::{File, Metadata};
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
 use std::path::PathBuf;
 
 use clap::error::Result;
-use log::{error, info, trace, warn};
-use serde_json::json;
+use log::{info, trace, warn};
 
 use crate::builder::JsonBuilder;
 use crate::common::constants;
@@ -42,7 +42,7 @@ pub struct BlockHeader {
 }
 
 impl Display for BlockHeader {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Block header: 0x{:02X}{:02X} RBA: {}, Checksum: 0x{:04X}", self.block_flag, self.file_type, self.rba, self.checksum)
     }
 }
@@ -105,7 +105,7 @@ pub struct RedoRecordHeaderExpansion {
 }
 
 impl Display for RedoRecordHeaderExpansion {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Num/NumMax: {}/{} Records count: {}\nRecord SCN: {}\nSCN1: {}\nSCN2: {}\nTimestamp: {}", 
                 self.record_num, self.record_num_max, self.records_count, self.records_scn, self.scn1, self.scn2, self.records_timestamp)
     }
@@ -122,7 +122,7 @@ pub struct RedoRecordHeader {
 }
 
 impl Display for RedoRecordHeader {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Record size: {} VLD: {:02X}\nRecord SCN: {} Sub SCN: {}\n", self.record_size, self.vld, self.scn, self.sub_scn)?;
         if let Some(con_id) = self.container_uid {
             write!(f, "Container id: {}\n", con_id)?;
@@ -156,7 +156,7 @@ pub struct RedoVectorHeader {
 }
 
 impl Display for RedoVectorHeader {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let opcode_desc = match self.op_code {
             (5, 1) => "Operation info (undo block redo)",
             (5, 2) => "Begin transaction / iternal (undo header redo)",
