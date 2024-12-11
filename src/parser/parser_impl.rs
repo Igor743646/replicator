@@ -178,7 +178,7 @@ impl Parser {
                 if start_block == 1 {
                     redo_log_header = self.get_redo_log_header(&phisical_block)?;
                     if self.can_dump(1) {
-                        self.write_dump(format_args!("{:#?}", redo_log_header));
+                        self.write_dump(format_args!("{:#?}", redo_log_header))?;
                     }
                     self.version = Some(redo_log_header.oracle_version);
                     start_block += 1;
@@ -280,10 +280,11 @@ impl Parser {
     }
 
     fn check_file_header(&self, buffer : &[u8]) -> Result<(), OLRError> {
-        let mut reader = ByteReader::from_bytes(&buffer);
-
         assert!(self.block_size.is_some());
         assert!(self.endian.is_some());
+
+        let mut reader = ByteReader::from_bytes(&buffer);
+        reader.set_endian(self.endian.unwrap());
 
         let block_flag = reader.read_u8().unwrap();
         let file_type = reader.read_u8().unwrap();
@@ -321,6 +322,8 @@ impl Parser {
 
         let mut reader = ByteReader::from_bytes(read_buffer);
         reader.set_endian(self.endian.unwrap());
+
+        assert!(reader.data().len() >= 512, "Block length {} < 512", reader.data().len());
 
         let mut redo_log_header : RedoLogHeader = RedoLogHeader::default();
 
@@ -430,10 +433,10 @@ impl RecordAnalizer for Parser {
         }
 
         if self.can_dump(1) {
-            self.write_dump(format_args!("\n\n########################################################\n"));
-            self.write_dump(format_args!("#                     REDO RECORD                      #\n"));
-            self.write_dump(format_args!("########################################################\n"));
-            self.write_dump(format_args!("\nHeader: {}", record_header));
+            self.write_dump(format_args!("\n\n########################################################\n"))?;
+            self.write_dump(format_args!("#                     REDO RECORD                      #\n"))?;
+            self.write_dump(format_args!("########################################################\n"))?;
+            self.write_dump(format_args!("\nHeader: {}", record_header))?;
         }
 
         let mut vector_info_pull : VecDeque<VectorInfo> = VecDeque::with_capacity(2);
@@ -443,7 +446,7 @@ impl RecordAnalizer for Parser {
             reader.align_up(4);
 
             if self.can_dump(1) {
-                self.write_dump(format_args!("\n{}", vector_header));
+                self.write_dump(format_args!("\n{}", vector_header))?;
             }
 
             let vector_body_size : usize = vector_header.fields_sizes
