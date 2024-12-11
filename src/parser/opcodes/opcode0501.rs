@@ -1,7 +1,7 @@
 use log::warn;
 
 use super::{VectorInfo, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{constants, errors::OLRError, types::{TypeFb, TypeScn, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
 pub struct OpCode0501<'a> {
@@ -18,10 +18,11 @@ pub struct OpCode0501<'a> {
     pub flags : u8,
     pub slot : u16,
 
-    pub fb : u8,
+    pub fb : TypeFb,
     pub cc : u8,
     pub size_delt : u16,
     pub nulls_offset : usize,
+    pub slots_offset : usize,
 
     pub nrow : u8,
     
@@ -45,8 +46,9 @@ impl<'a> OpCode0501<'a> {
             cc : Default::default(),
             size_delt : Default::default(),
             nulls_offset : Default::default(),
+            slots_offset : Default::default(),
             nrow : Default::default(),
-            reader : reader,
+            reader,
         };
         res.init(parser)?;
         Ok(res)
@@ -55,44 +57,39 @@ impl<'a> OpCode0501<'a> {
     fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
         
         match self.reader.next() {
-            Some(mut field_reader) => self.ktudb(parser, &mut field_reader, 0),
+            Some(ref mut field_reader) => self.ktudb(parser, field_reader, 0),
             None => olr_perr!("Expect ktudb field")
         }?;
 
-        if let Some(mut field_reader) = self.reader.next() {
-            self.ktubl(parser, &mut field_reader, 1)?;
-        } else {
-            return Ok(())
-        }
+        match self.reader.next() {
+            Some(ref mut field_reader) => self.ktubl(parser, field_reader, 1),
+            None => return Ok(()),
+        }?;
 
-        if self.flg & (constants::FLG_MULTIBLOCKUNDOHEAD | constants::FLG_MULTIBLOCKUNDOTAIL | constants::FLG_MULTIBLOCKUNDOMID) != 0 
-            || self.reader.eof() 
-        {
+        if self.flg & constants::FLG_MULTIBLOCKUNDO != 0 || self.reader.eof() {
             return Ok(());
         }
 
         match self.opc {
             (10, 22) => {
-                if let Some(mut field_reader) = self.reader.next() {
-                    self.ktb_redo(parser, &mut field_reader, 2)?;
-                } else {
-                    return Ok(())
-                }
+                match self.reader.next() {
+                    Some(ref mut field_reader) => self.ktb_redo(parser, field_reader, 2),
+                    None => return Ok(()),
+                }?;
 
                 self.opc0a16(parser, 3)?;
             },
             (11, 1) => {
-                if let Some(mut field_reader) = self.reader.next() {
-                    self.ktb_redo(parser, &mut field_reader, 2)?;
-                } else {
-                    return Ok(())
-                }
+                match self.reader.next() {
+                    Some(ref mut field_reader) => self.ktb_redo(parser, field_reader, 2),
+                    None => return Ok(()),
+                }?;
 
                 self.opc0b01(parser, 3)?;
             },
-            (_, _) => {
-                warn!("Unknown 5.1 opc: {}.{}", self.opc.0, self.opc.1);
-            },
+            (26, 1) => std::unimplemented!(),
+            (14, 8) => () /* kteoputrn field */,
+            (_, _) => (),
         }
 
         Ok(())
@@ -106,7 +103,6 @@ impl<'a> OpCode0501<'a> {
         let slt = reader.read_u16()?;
         let seq = reader.read_u32()?;
         self.xid = TypeXid::new(usn, slt, seq);
-        reader.skip_bytes(4);
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("\n[Change {}; KTUDB] XID: {}", field_num, self.xid));
@@ -118,23 +114,21 @@ impl<'a> OpCode0501<'a> {
     fn ktubl(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() >= 24, "Size of field {} < 24", reader.data().len());
 
-        self.obj = reader.read_u32()?;
-        self.data_obj = reader.read_u32()?;
+        self.obj        = reader.read_u32()?;
+        self.data_obj   = reader.read_u32()?;
         reader.skip_bytes(4);
-        let _undo = reader.read_u32()?;
-        self.opc.0 = reader.read_u8()?;
-        self.opc.1 = reader.read_u8()?;
-        self.slt = reader.read_u8()? as u16;
+        let _undo  = reader.read_u32()?;
+        self.opc.0      = reader.read_u8()?;
+        self.opc.1      = reader.read_u8()?;
+        self.slt        = reader.read_u8()? as u16;
         reader.skip_bytes(1);
-        self.flg = reader.read_u16()?;
-        reader.skip_bytes(2);
+        self.flg        = reader.read_u16()?;
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("\n[Change {}; KTUBL - {}] OBJ: {} DATAOBJ: {}\nOPC: {}.{} SLT: {}\nFLG: {:016b}\n", 
                     field_num, reader.data().len(), self.obj, self.data_obj, self.opc.0, self.opc.1, self.slt, self.flg));
 
             let tbl = ["NO", "YES"];
-
             parser.write_dump(format_args!(" MULTI BLOCK UNDO HEAD : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOHEAD != 0) as usize]));
             parser.write_dump(format_args!(" MULTI BLOCK UNDO TAIL : {:>3}\n", tbl[(self.flg & constants::FLG_MULTIBLOCKUNDOTAIL != 0) as usize]));
             parser.write_dump(format_args!(" LAST BUFFER SPLIT     : {:>3}\n", tbl[(self.flg & constants::FLG_LASTBUFFERSPLIT    != 0) as usize]));
@@ -154,8 +148,8 @@ impl<'a> OpCode0501<'a> {
 
         let ktb_op = reader.read_u8()?;
         let flg = reader.read_u8()?;
-        reader.skip_bytes(2);
 
+        reader.skip_bytes(2);
         if flg & 0x08 != 0 {
             reader.skip_bytes(4);
         }
@@ -206,9 +200,62 @@ impl<'a> OpCode0501<'a> {
                     parser.write_dump(format_args!("Op: L ITL_XID: {} UBA: {}\n", itl_xid, uba));
                 }
             },
+            constants::KTBOP_R => {
+                if parser.can_dump(1) {
+                    reader.skip_bytes(2);
+                    let itc = match reader.read_i16()? {
+                        x if x < 0 => 0usize,
+                        x => x as usize,
+                    };
+                    reader.skip_bytes(8);
+
+                    parser.write_dump(format_args!("Op: R ITC: {}\n", itc));
+
+                    assert!(reader.data().len() - reader.cursor() >= 12 + itc * 24, "Size of field {} < 12 * itc * 24", reader.data().len());
+
+                    for i in 0 .. itc {
+                        let usn = reader.read_u16()?;
+                        let slt = reader.read_u16()?;
+                        let seq = reader.read_u32()?;
+                        let itc_xid = TypeXid::new(usn, slt, seq);
+                        let uba = reader.read_uba()?;
+    
+                        let mut flags : [u8; 4] = *b"----";
+                        let scnfsc : TypeScn;
+                        let mut scnfsc_str = "FSC";
+                        let mut lck = reader.read_u16()?;
+                        
+                        if lck & 0x1000 != 0 {flags[3] = b'T';}
+                        if lck & 0x2000 != 0 {flags[2] = b'U';}
+                        if lck & 0x4000 != 0 {flags[1] = b'B';}
+                        if lck & 0x8000 != 0 {
+                            flags[0] = b'C';
+                            scnfsc_str = "SCN";
+                            lck = 0;
+                            scnfsc = ((reader.read_u32()? as u64) | ((reader.read_u16()? as u64) << 32)).into();
+                        } else {
+                            scnfsc = (((reader.read_u16()? as u64) << 32) | (reader.read_u32()? as u64)).into();
+                        }
+                        lck &= 0x0FFF;
+
+                        parser.write_dump(format_args!("[{}]: ITCXID: {} UBA: {} LCK: {} {}: {}\n", i, itc_xid, uba, lck, scnfsc_str, scnfsc));
+                    }
+                }
+            },
+            constants::KTBOP_N => {
+                if parser.can_dump(1) {
+                    parser.write_dump(format_args!("Op: N\n"));
+                }
+            },
             _ => {
                 return olr_perr!("Unknown ktb operation: {}. Dump: {}", ktb_op & 0x0F, reader.to_hex_dump());
             },
+        }
+
+        if ktb_op & constants::KTBOP_BLOCKCLEANOUT != 0 {
+            if parser.can_dump(1) {
+                parser.write_dump(format_args!("Block cleanout record\n"));
+            }
         }
 
         Ok(())
@@ -217,7 +264,7 @@ impl<'a> OpCode0501<'a> {
     fn kdo_opcode_irp(&mut self, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
         assert!(reader.data().len() >= 48, "Size of field {} < 48", reader.data().len());
 
-        self.fb = reader.read_u8()?;
+        self.fb = reader.read_u8()?.into();
         let lb = reader.read_u8()?;
         self.cc = reader.read_u8()?;
         let cki = reader.read_u8()?;
@@ -281,7 +328,7 @@ impl<'a> OpCode0501<'a> {
     fn kdo_opcode_urp(&mut self, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
         assert!(reader.data().len() >= 28, "Size of field {} < 28", reader.data().len());
 
-        self.fb = reader.read_u8()?;
+        self.fb = reader.read_u8()?.into();
         let lock = reader.read_u8()?;
         let ckix = reader.read_u8()?;
         let tabn = reader.read_u8()?;
@@ -305,7 +352,7 @@ impl<'a> OpCode0501<'a> {
     fn kdo_opcode_orp(&mut self, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
         assert!(reader.data().len() >= 48, "Size of field {} < 48", reader.data().len());
 
-        self.fb = reader.read_u8()?;
+        self.fb = reader.read_u8()?.into();
         reader.skip_bytes(1);
         self.cc = reader.read_u8()?;
         reader.skip_bytes(23);
@@ -330,6 +377,7 @@ impl<'a> OpCode0501<'a> {
         let lock = reader.read_u8()?;
         self.nrow = reader.read_u8()?;
         reader.skip_bytes(1);
+        self.slots_offset = reader.cursor();
 
         if parser.can_dump(1) {
             parser.write_dump(format_args!("NROW: {}\n", self.nrow));

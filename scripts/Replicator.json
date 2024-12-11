@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "log-level": 4,
-  "dump-redo-log": 0,
+  "dump-redo-log": 2,
   "dump-path": "output/",
   "source": [
       {

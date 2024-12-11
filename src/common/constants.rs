@@ -25,6 +25,7 @@ pub const FLG_ISTEMPOBJECT : u16 = 0x0020;
 pub const FLG_USERONLY : u16 = 0x0040;
 pub const FLG_TABLESPACEUNDO : u16 = 0x0080;
 pub const FLG_MULTIBLOCKUNDOMID : u16 = 0x0100;
+pub const FLG_MULTIBLOCKUNDO : u16 = FLG_MULTIBLOCKUNDOHEAD | FLG_MULTIBLOCKUNDOTAIL | FLG_MULTIBLOCKUNDOMID;
 
 pub const KTBOP_F : u8 = 0x01;
 pub const KTBOP_C : u8 = 0x02;
@@ -32,6 +33,7 @@ pub const KTBOP_Z : u8 = 0x03;
 pub const KTBOP_L : u8 = 0x04;
 pub const KTBOP_R : u8 = 0x05;
 pub const KTBOP_N : u8 = 0x06;
+pub const KTBOP_BLOCKCLEANOUT : u8 = 0x10;
 
 pub const OP_IUR : u8 = 0x01;
 pub const OP_IRP : u8 = 0x02;

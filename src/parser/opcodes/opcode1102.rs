@@ -1,10 +1,10 @@
 use super::{VectorInfo, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{constants, errors::OLRError, types::{TypeFb, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
 pub struct OpCode1102<'a> {
     pub xid : TypeXid,
-    pub fb : u8,
+    pub fb : TypeFb,
     pub cc : u8,
     pub size_delt : u16,
     pub slot : u16,
@@ -154,7 +154,7 @@ impl<'a> OpCode1102<'a> {
     fn kdo_opcode_irp(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() >= 48, "Size of field {} < 48", reader.data().len());
 
-        self.fb = reader.read_u8()?;
+        self.fb = reader.read_u8()?.into();
         let lb = reader.read_u8()?;
         self.cc = reader.read_u8()?;
         let cki = reader.read_u8()?;
