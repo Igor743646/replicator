@@ -21,22 +21,22 @@ impl std::fmt::Display for RecordHeaderExpansion {
 
 #[derive(Debug, Default)]
 pub struct RecordHeader {
-    pub record_size : u32,
-    pub vld : u8,
-    pub scn : TypeRecordScn,
-    pub sub_scn : u16,
-    pub container_uid : Option<u32>,
-    pub expansion : Option<RecordHeaderExpansion>,
+    pub record_size     : u32,
+    pub vld             : u8,
+    pub scn             : TypeRecordScn,
+    pub sub_scn         : u16,
+    pub container_id    : Option<u32>,
+    pub expansion       : Option<RecordHeaderExpansion>,
 }
 
 impl std::fmt::Display for RecordHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Record size: {} VLD: {:02X}\nRecord SCN: {} Sub SCN: {}\n", self.record_size, self.vld, self.scn, self.sub_scn)?;
-        if let Some(con_id) = self.container_uid {
-            write!(f, "Container id: {}\n", con_id)?;
+        write!(f, "Record size: {} VLD: {:02X}\nRecord SCN: {} Sub SCN: {}", self.record_size, self.vld, self.scn, self.sub_scn)?;
+        if let Some(con_id) = self.container_id {
+            write!(f, "\nContainer id: {}", con_id)?;
         }
         if let Some(ref ext) = self.expansion {
-            write!(f, "{}\n", ext)?;
+            write!(f, "\n{}", ext)?;
         }
         Ok(())
     }

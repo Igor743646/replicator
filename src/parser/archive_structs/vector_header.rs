@@ -3,23 +3,23 @@ use crate::common::types::TypeScn;
 
 #[derive(Debug, Default)]
 pub struct VectorHeaderExpansion {
-    pub container_id : u16,
-    pub flag : u16,
+    pub container_id    : u16,
+    pub flag            : u16,
 }
 
 #[derive(Debug, Default)]
 pub struct VectorHeader {
-    pub op_code : (u8, u8),
-    pub class : u16,
-    pub afn : u16, // absolute file number
-    pub dba : u32,
-    pub vector_scn : TypeScn,
-    pub seq : u8,  // sequence number
-    pub typ : u8,  // change type
-    pub expansion : Option<VectorHeaderExpansion>,
+    pub op_code         : (u8, u8),
+    pub class           : u16,
+    pub afn             : u16, // absolute file number
+    pub dba             : u32,
+    pub vector_scn      : TypeScn,
+    pub seq             : u8,  // sequence number
+    pub typ             : u8,  // change type
+    pub expansion       : Option<VectorHeaderExpansion>,
 
-    pub fields_count : u16,
-    pub fields_sizes : Vec<u16>,
+    pub fields_count    : u16,
+    pub fields_sizes    : Vec<u16>,
 }
 
 impl std::fmt::Display for VectorHeader {

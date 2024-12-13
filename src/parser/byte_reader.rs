@@ -1,7 +1,5 @@
 use std::fmt::Write;
 
-use log::error;
-
 use crate::{common::{constants::{self, REDO_VERSION_12_1}, errors::OLRError, types::{TypeRBA, TypeScn, TypeTimestamp, TypeUba}}, olr_perr};
 
 use super::archive_structs::{block_header::BlockHeader, record_header::{RecordHeader, RecordHeaderExpansion}, vector_header::{VectorHeader, VectorHeaderExpansion}};
@@ -19,6 +17,41 @@ pub struct ByteReader<'a> {
     data : &'a [u8],
     cursor : usize,
     endian : Endian,
+}
+
+macro_rules! number_unsafe_impl {
+    (
+        Self = $SelfType:ty,
+        $FuncName:ident,
+        $NumType:ty 
+    ) => {
+        pub unsafe fn $FuncName(&mut self) -> $NumType {
+            let result: $NumType = unsafe {
+                let ptr = self.data.as_ptr().add(self.cursor) as *const [u8; size_of::<$NumType>()];
+                match self.endian {
+                    Endian::LittleEndian => <$NumType>::from_le_bytes(*ptr),
+                    Endian::BigEndian => <$NumType>::from_be_bytes(*ptr),
+                    Endian::NativEndian => <$NumType>::from_ne_bytes(*ptr),
+                }
+            };
+            self.cursor += size_of::<$NumType>();
+            result
+        }
+    }
+}
+
+macro_rules! number_impl {
+    (
+        Self = $SelfType:ty,
+        $FuncName:ident,
+        $UnsafeFuncName:ident,
+        $NumType:ty 
+    ) => {
+        pub fn $FuncName(&mut self) -> Result<$NumType, OLRError> {
+            self.validate_size(size_of::<$NumType>())?;
+            unsafe { Ok(self.$UnsafeFuncName()) }
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -65,7 +98,7 @@ impl<'a> ByteReader<'a> {
     }
 
     pub fn align_up(&mut self, size : usize) {
-        assert!(size.count_ones() == 1);
+        assert!(size.is_power_of_two());
         self.cursor = (self.cursor + (size - 1)) & !(size - 1);
     }
 
@@ -81,160 +114,23 @@ impl<'a> ByteReader<'a> {
         Ok(())
     }
 
-    pub unsafe fn read_u8_unchecked(&mut self) -> u8 {
-        let result;
-        unsafe {
-            let ptr = self.data.as_ptr().add(self.cursor);
-            result = *ptr;
-        }
-        self.cursor += 1;
-        result
-    }
-
-    pub fn read_u8(&mut self) -> Result<u8, OLRError> {
-        self.validate_size(1)?;
-        unsafe { Ok(self.read_u8_unchecked()) }
-    }
-
-    pub unsafe fn read_u16_unchecked(&mut self) -> u16 {
-        let mut result: u16 = 0;
-        unsafe {
-            let ptr = self.data.as_ptr().add(self.cursor) as *const u8;
-            match self.endian {
-                Endian::LittleEndian => {
-                    result |= *ptr as u16;
-                    result |= (*ptr.add(1) as u16) << 8;
-                },
-                Endian::BigEndian => {
-                    result |= *ptr as u16;
-                    result <<= 8;
-                    result |= *ptr.add(1) as u16;
-                },
-                Endian::NativEndian => {
-                    result = *(ptr as *const u16);
-                },
-            }
-        }
-        self.cursor += 2;
-        result
-    }
-
-    pub fn read_u16(&mut self) -> Result<u16, OLRError> {
-        self.validate_size(2)?;
-        unsafe { Ok(self.read_u16_unchecked()) }
-    }
-
-    pub unsafe fn read_u32_unchecked(&mut self) -> u32 {
-        let mut result: u32 = 0;
-        unsafe {
-            let ptr = self.data.as_ptr().add(self.cursor) as *const u8;
-            match self.endian {
-                Endian::LittleEndian => {
-                    result |= *ptr as u32;
-                    result |= (*ptr.add(1) as u32) << 8;
-                    result |= (*ptr.add(2) as u32) << 16;
-                    result |= (*ptr.add(3) as u32) << 24;
-                },
-                Endian::BigEndian => {
-                    result |= *ptr as u32;
-                    result <<= 8;
-                    result |= *ptr.add(1) as u32;
-                    result <<= 8;
-                    result |= *ptr.add(2) as u32;
-                    result <<= 8;
-                    result |= *ptr.add(3) as u32;
-                },
-                Endian::NativEndian => {
-                    result = *(ptr as *const u32);
-                },
-            }
-        }
-        self.cursor += 4;
-        result
-    }
-
-    pub fn read_u32(&mut self) -> Result<u32, OLRError> {
-        self.validate_size(4)?;
-        Ok(unsafe { self.read_u32_unchecked() })
-    }
-
-    pub unsafe fn read_u64_unchecked(&mut self) -> u64 {
-        let mut result: u64 = 0;
-        unsafe {
-            let ptr = self.data.as_ptr().add(self.cursor) as *const u8;
-            match self.endian {
-                Endian::LittleEndian => {
-                    result |= *ptr as u64;
-                    result |= (*ptr.add(1) as u64) << 8;
-                    result |= (*ptr.add(2) as u64) << 16;
-                    result |= (*ptr.add(3) as u64) << 24;
-                    result |= (*ptr.add(4) as u64) << 32;
-                    result |= (*ptr.add(5) as u64) << 40;
-                    result |= (*ptr.add(6) as u64) << 48;
-                    result |= (*ptr.add(7) as u64) << 56;
-                },
-                Endian::BigEndian => {
-                    result |= *ptr as u64;
-                    result <<= 8;
-                    result |= *ptr.add(1) as u64;
-                    result <<= 8;
-                    result |= *ptr.add(2) as u64;
-                    result <<= 8;
-                    result |= *ptr.add(3) as u64;
-                    result <<= 8;
-                    result |= *ptr.add(4) as u64;
-                    result <<= 8;
-                    result |= *ptr.add(5) as u64;
-                    result <<= 8;
-                    result |= *ptr.add(6) as u64;
-                    result <<= 8;
-                    result |= *ptr.add(7) as u64;
-                },
-                Endian::NativEndian => {
-                    result = *(ptr as *const u64);
-                },
-            }
-        }
-        self.cursor += 8;
-        result
-    }
-
-    pub fn read_u64(&mut self) -> Result<u64, OLRError> {
-        self.validate_size(8)?;
-        Ok(unsafe { self.read_u64_unchecked() })
-    }
-
-    pub unsafe fn read_i8_unchecked(&mut self) -> i8 {
-        self.read_u8_unchecked() as i8
-    }
-
-    pub fn read_i8(&mut self) -> Result<i8, OLRError> {
-        Ok(self.read_u8()? as i8)
-    }
-
-    pub unsafe fn read_i16_unchecked(&mut self) -> i16 {
-        self.read_u16_unchecked() as i16
-    }
-
-    pub fn read_i16(&mut self) -> Result<i16, OLRError> {
-        Ok(self.read_u16()? as i16)
-    }
-
-    pub unsafe fn read_i32_unchecked(&mut self) -> i32 {
-        self.read_u32_unchecked() as i32
-    }
-
-    pub fn read_i32(&mut self) -> Result<i32, OLRError> {
-        Ok(self.read_u32()? as i32)
-    }
-
-    pub unsafe fn read_i64_unchecked(&mut self) -> i64 {
-        self.read_u64_unchecked() as i64
-    }
-
-    pub fn read_i64(&mut self) -> Result<i64, OLRError> {
-        Ok(self.read_u64()? as i64)
-    }
+    number_unsafe_impl!{Self = ByteReader, read_u8_unchecked, u8}
+    number_unsafe_impl!{Self = ByteReader, read_u16_unchecked, u16}
+    number_unsafe_impl!{Self = ByteReader, read_u32_unchecked, u32}
+    number_unsafe_impl!{Self = ByteReader, read_u64_unchecked, u64}
+    number_unsafe_impl!{Self = ByteReader, read_i8_unchecked, i8}
+    number_unsafe_impl!{Self = ByteReader, read_i16_unchecked, i16}
+    number_unsafe_impl!{Self = ByteReader, read_i32_unchecked, i32}
+    number_unsafe_impl!{Self = ByteReader, read_i64_unchecked, i64}
+    
+    number_impl!{Self = ByteReader, read_u8, read_u8_unchecked, u8}
+    number_impl!{Self = ByteReader, read_u16, read_u16_unchecked, u16}
+    number_impl!{Self = ByteReader, read_u32, read_u32_unchecked, u32}
+    number_impl!{Self = ByteReader, read_u64, read_u64_unchecked, u64}
+    number_impl!{Self = ByteReader, read_i8, read_i8_unchecked, i8}
+    number_impl!{Self = ByteReader, read_i16, read_i16_unchecked, i16}
+    number_impl!{Self = ByteReader, read_i32, read_i32_unchecked, i32}
+    number_impl!{Self = ByteReader, read_i64, read_i64_unchecked, i64}
 
     pub unsafe fn read_rba_unchecked(&mut self) -> TypeRBA {
         unsafe { TypeRBA::new(
@@ -338,7 +234,7 @@ impl<'a> ByteReader<'a> {
             self.skip_bytes(2);
 
             if version >= REDO_VERSION_12_1 {
-                result.container_uid = Some(self.read_u32_unchecked());
+                result.container_id = Some(self.read_u32_unchecked());
                 self.skip_bytes(4);
             } else {
                 self.skip_bytes(8);
@@ -393,15 +289,9 @@ impl<'a> ByteReader<'a> {
             }
 
             result.fields_count = (self.read_u16_unchecked() - 2) / 2;
-            result.fields_sizes.resize_with(result.fields_count as usize, || -> u16 {
-                let res = self.read_u16();
-
-                if let Err(err) = res {
-                    error!("Redo vector header parsing error: {}", err);
-                    panic!()
-                }
-                res.unwrap()
-            });
+            result.fields_sizes = (0 .. result.fields_count)
+                .map(|_| self.read_u16())
+                .collect::<Result<Vec<u16>, OLRError>>()?;
         }
 
         Ok(result)
@@ -508,7 +398,6 @@ impl<'a> ByteReader<'a> {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod test {

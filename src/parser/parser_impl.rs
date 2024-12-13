@@ -258,7 +258,7 @@ impl Parser {
                             return olr_perr!("No record, but expected");
                         }
 
-                        self.analize_record(record.unwrap(), redo_log_header.oracle_version)?;
+                        self.analize_record(record.unwrap())?;
                     }
 
                     self.records_manager.free_chunks();
@@ -418,7 +418,7 @@ impl Parser {
 
 
 impl RecordAnalizer for Parser {
-    fn analize_record(&mut self, record_ptr : *mut Record, version : u32) -> Result<(), OLRError> {
+    fn analize_record(&mut self, record_ptr : *mut Record) -> Result<(), OLRError> {
         
         let record = unsafe { record_ptr.as_mut().unwrap() };
 
@@ -426,7 +426,7 @@ impl RecordAnalizer for Parser {
 
         let mut reader = ByteReader::from_bytes(record.data());
         reader.set_endian(self.endian.unwrap());
-        let record_header = reader.read_redo_record_header(version)?;
+        let record_header = reader.read_redo_record_header(self.version.unwrap())?;
         
         if record_header.record_size != record.size {
             return olr_perr!("Sizes must be equal, but: {} != {}", record_header.record_size, record.size);
@@ -441,7 +441,7 @@ impl RecordAnalizer for Parser {
 
         let mut vector_info_pull : VecDeque<VectorInfo> = VecDeque::with_capacity(2);
         while !reader.eof() {
-            let vector_header: VectorHeader = reader.read_redo_vector_header(version)?;
+            let vector_header: VectorHeader = reader.read_redo_vector_header(self.version.unwrap())?;
             trace!("Analize vector: {:?} offset: {}", vector_header.op_code, reader.cursor());
             reader.align_up(4);
 
