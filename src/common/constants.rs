@@ -1,7 +1,7 @@
-pub const MEMORY_CHUNK_MIN_MB : u64 = 16;
-pub const MEMORY_CHUNK_SIZE_MB : u64 = 1;
-pub const MEMORY_CHUNK_SIZE : u64 = MEMORY_CHUNK_SIZE_MB * 1024 * 1024;
-pub const MEMORY_ALIGNMENT : u64 = 512;
+pub const MEMORY_CHUNK_MIN_MB : usize = 16;
+pub const MEMORY_CHUNK_SIZE_MB : usize = 1;
+pub const MEMORY_CHUNK_SIZE : usize = MEMORY_CHUNK_SIZE_MB * 1024 * 1024;
+pub const MEMORY_ALIGNMENT : usize = 512;
 
 pub const OPTIONS_SYSTEM_TABLE : u8 = 1;
 pub const OPTIONS_SCHEMA_TABLE : u8 = 2;

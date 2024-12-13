@@ -55,12 +55,9 @@ impl RecordsManager {
         };
 
         let mut chunk = res.context_ptr.get_chunk().unwrap();
-
-        let mut writer = ByteWriter::from_bytes(&mut chunk);
-        writer.write_u64(size_of::<u64>() as u64).unwrap();
+        Self::set_chunk_size(&mut chunk, size_of::<u64>());
 
         res.chunks.push_back(chunk);
-
         res 
     }
 
@@ -74,20 +71,36 @@ impl RecordsManager {
         Ok(())
     }
 
+    fn get_chunk_size(chunk : &MemoryChunk) -> usize {
+        ByteReader::from_bytes(chunk)
+            .read_u64()
+            .unwrap() as usize
+    }
+
+    fn set_chunk_size(chunk : &mut MemoryChunk, chunk_size : usize) {
+        ByteWriter::from_bytes(chunk)
+            .write_u64(chunk_size as u64)
+            .unwrap();
+    }
+
+    fn next_chunk_size(chunk_size : usize, record_size : usize) -> usize {
+        let next_size = chunk_size + size_of::<Record>() + record_size;
+        (next_size + 7) & !7
+    }
+
     pub fn reserve_record(&mut self, record_size : usize) -> Result<&'static mut Record, OLRError> {
         let mut last_chunk = self.chunks.back_mut().unwrap();
+        let mut chunk_size = Self::get_chunk_size(&last_chunk);
 
-        let mut chunk_size = ByteReader::from_bytes(&last_chunk).read_u64().unwrap();
-
-        if (chunk_size as usize + size_of::<Record>() + record_size + 7) & 0xFFFFFFF8 > constants::MEMORY_CHUNK_SIZE as usize {
+        if Self::next_chunk_size(chunk_size, record_size) > constants::MEMORY_CHUNK_SIZE {
             self.allocate_chunk()?;
             last_chunk = self.chunks.back_mut().unwrap();
-            chunk_size = size_of::<u64>() as u64;
-            ByteWriter::from_bytes(&mut last_chunk).write_u64(chunk_size).unwrap();
-        }
+            chunk_size = size_of::<u64>();
+            Self::set_chunk_size(last_chunk, chunk_size);
 
-        if (chunk_size as usize + size_of::<Record>() + record_size + 7) & 0xFFFFFFF8 > constants::MEMORY_CHUNK_SIZE as usize {
-            return olr_err!(MemoryAllocation, "Record is very big for writing in memory chunk of size: {}", constants::MEMORY_CHUNK_SIZE);
+            if Self::next_chunk_size(chunk_size, record_size) > constants::MEMORY_CHUNK_SIZE {
+                return olr_err!(MemoryAllocation, "Record is very big ({}B) for writing in memory chunk of size: {}", record_size, constants::MEMORY_CHUNK_SIZE);
+            }
         }
 
         let result = unsafe {
@@ -104,8 +117,7 @@ impl RecordsManager {
                 .unwrap()
         };
 
-        ByteWriter::from_bytes(&mut last_chunk)
-            .write_u64(chunk_size + (size_of::<Record>() as u64 + record_size as u64 + 7) & 0xFFFFFFF8).unwrap();
+        Self::set_chunk_size(last_chunk, RecordsManager::next_chunk_size(chunk_size, record_size));
 
         Ok(result)
     }
@@ -128,7 +140,7 @@ impl RecordsManager {
         }
 
         let mut chunk = self.chunks.back_mut().unwrap();
-        ByteWriter::from_bytes(&mut chunk).write_u64(size_of::<u64>() as u64).unwrap()
+        Self::set_chunk_size(&mut chunk, size_of::<u64>());
     }
 
 }

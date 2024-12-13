@@ -155,9 +155,9 @@ impl OracleLogicalReplicator {
 
             info!("adding source: {}", alias);
 
-            let mut memory_min_mb : u64 = 32;
-            let mut memory_max_mb : u64 = 1024;
-            let mut read_buffer_max : u64 = memory_max_mb / 4 / constants::MEMORY_CHUNK_SIZE_MB;
+            let mut memory_min_mb : usize = 32;
+            let mut memory_max_mb : usize = 1024;
+            let mut read_buffer_max : usize = memory_max_mb / 4 / constants::MEMORY_CHUNK_SIZE_MB;
 
             // Memory data
             if let Some(memory_json) = self.get_json_field_o(&source_json, "memory")? {
@@ -165,14 +165,14 @@ impl OracleLogicalReplicator {
                 self.check_config_fields(&memory_json, ["min-mb", "max-mb", "read-buffer-max-mb"])?;
 
                 if let Some(_memory_min_mb) = self.get_json_field_u64(&memory_json, "min-mb")? {
-                    memory_min_mb = (_memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB) * constants::MEMORY_CHUNK_SIZE_MB;
+                    memory_min_mb = (_memory_min_mb as usize / constants::MEMORY_CHUNK_SIZE_MB) * constants::MEMORY_CHUNK_SIZE_MB;
                     if memory_min_mb < constants::MEMORY_CHUNK_MIN_MB {
                         return olr_err!(NotValidField, "Field 'min-mb' ({}) expected: at least {}", memory_min_mb, constants::MEMORY_CHUNK_MIN_MB);
                     }
                 }
 
                 if let Some(_memory_max_mb) = self.get_json_field_u64(&memory_json, "max-mb")? {
-                    memory_max_mb = (_memory_max_mb / constants::MEMORY_CHUNK_SIZE_MB) * constants::MEMORY_CHUNK_SIZE_MB;
+                    memory_max_mb = (_memory_max_mb as usize / constants::MEMORY_CHUNK_SIZE_MB) * constants::MEMORY_CHUNK_SIZE_MB;
                     if memory_max_mb < memory_min_mb {
                         return olr_err!(NotValidField, "Field 'max-mb' ({}) expected: at least like min-mb {}", memory_max_mb, memory_min_mb);
                     }
@@ -180,7 +180,7 @@ impl OracleLogicalReplicator {
                 }
 
                 if let Some(_read_buffer_max) = self.get_json_field_u64(&memory_json, "read-buffer-max-mb")? {
-                    read_buffer_max = (_read_buffer_max / constants::MEMORY_CHUNK_SIZE_MB) * constants::MEMORY_CHUNK_SIZE_MB;
+                    read_buffer_max = (_read_buffer_max as usize / constants::MEMORY_CHUNK_SIZE_MB) * constants::MEMORY_CHUNK_SIZE_MB;
                     if read_buffer_max > memory_max_mb {
                         return olr_err!(NotValidField, "Field 'read-buffer-max-mb' ({}) expected: not greater than max-mb {}", read_buffer_max, memory_max_mb);
                     }

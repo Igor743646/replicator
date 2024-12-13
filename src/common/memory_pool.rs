@@ -1,4 +1,4 @@
-use std::{alloc::{alloc_zeroed, dealloc, Layout}, collections::VecDeque, fmt::{Display, Formatter, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
+use std::{alloc::{alloc, dealloc, Layout}, collections::VecDeque, fmt::{Display, Formatter, UpperHex}, ops::{Deref, DerefMut}, ptr::NonNull};
 use log::{debug, warn};
 use crate::common::OLRErrorCode::*;
 use crate::olr_err;
@@ -25,7 +25,7 @@ impl MemoryChunk {
         let data_ptr : NonNull<[u8]>;
 
         unsafe {
-            let memory: *mut u8 = alloc_zeroed(Self::MEMORY_LAYOUT);
+            let memory: *mut u8 = alloc(Self::MEMORY_LAYOUT);
 
             if memory.is_null() {
                 return olr_err!(MemoryAllocation, "Memory chunk allocation failed");
@@ -83,24 +83,24 @@ impl UpperHex for MemoryChunk {
 
 #[derive(Debug, Default)]
 struct MemoryPoolStat {
-    pub allocated_max_mb : u64,
+    pub allocated_max_mb : usize,
 }
 
 #[derive(Debug)]
 pub struct MemoryPool {
-    memory_chunks_min : u64,
-    memory_chunks_max : u64,
-    read_buffer_max : u64,
+    memory_chunks_min : usize,
+    memory_chunks_max : usize,
+    read_buffer_max : usize,
 
     statistic : MemoryPoolStat,
 
     memory_chunks : VecDeque<MemoryChunk>,
-    memory_chunks_allocated : u64,
-    memory_chunks_free : u64,
+    memory_chunks_allocated : usize,
+    memory_chunks_free : usize,
 }
 
 impl MemoryPool {
-    pub fn new(memory_min_mb : u64, memory_max_mb : u64, read_buffer_max : u64) -> Result<Self, OLRError> {
+    pub fn new(memory_min_mb : usize, memory_max_mb : usize, read_buffer_max : usize) -> Result<Self, OLRError> {
         debug!("Initialize MemoryPool");
 
         let mut memory_chunks = VecDeque::with_capacity((memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB) as usize);
@@ -115,15 +115,15 @@ impl MemoryPool {
             memory_chunks_max : memory_max_mb / constants::MEMORY_CHUNK_SIZE_MB,
             read_buffer_max,
             statistic : MemoryPoolStat { 
-                allocated_max_mb : memory_chunks.len() as u64,
+                allocated_max_mb : memory_chunks.len(),
             },
-            memory_chunks_allocated : memory_chunks.len() as u64,
-            memory_chunks_free : memory_chunks.len() as u64,
+            memory_chunks_allocated : memory_chunks.len(),
+            memory_chunks_free : memory_chunks.len(),
             memory_chunks,
         })
     }
 
-    pub fn read_buffer_max(&self) -> u64 {
+    pub fn read_buffer_max(&self) -> usize {
         self.read_buffer_max
     }
 

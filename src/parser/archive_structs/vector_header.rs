@@ -49,7 +49,6 @@ impl std::fmt::Display for VectorHeader {
             (24, 1) => "Common portion of the ddl",
             (26, 2) => "Generic lob redo",
             (26, 6) => "Direct lob direct-load redo",
-
             (4, _) => "Transaction block",
             (5, _) => "Transaction undo",
             (10, _) => "Transaction index",
