@@ -153,8 +153,7 @@ impl<'a> OpCode0501<'a> {
         }
 
         if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}; KTBREDO - {}] OP: {}\n", 
-                    field_num, reader.data().len(), ktb_op))?;
+            parser.write_dump(format_args!("\n[Change {}; KTBREDO - {}] ", field_num, reader.data().len()))?;
         }
 
         match ktb_op & 0x0F {
@@ -168,7 +167,7 @@ impl<'a> OpCode0501<'a> {
 
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
-                    parser.write_dump(format_args!("Op: F XID: {} UBA: {}\n", self.xid, uba))?;
+                    parser.write_dump(format_args!("Op: F\nXID: {} UBA: {}\n", self.xid, uba))?;
                 }
             },
             constants::KTBOP_C => {
@@ -176,7 +175,7 @@ impl<'a> OpCode0501<'a> {
 
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
-                    parser.write_dump(format_args!("Op: C UBA: {}\n", uba))?;
+                    parser.write_dump(format_args!("Op: C\nUBA: {}\n", uba))?;
                 }
             },
             constants::KTBOP_Z => {
@@ -195,7 +194,7 @@ impl<'a> OpCode0501<'a> {
                     let uba = reader.read_uba()?;
                     reader.skip_bytes(8);
                     
-                    parser.write_dump(format_args!("Op: L ITL_XID: {} UBA: {}\n", itl_xid, uba))?;
+                    parser.write_dump(format_args!("Op: L\nITL_XID: {} UBA: {}\n", itl_xid, uba))?;
                 }
             },
             constants::KTBOP_R => {
@@ -207,7 +206,7 @@ impl<'a> OpCode0501<'a> {
                     };
                     reader.skip_bytes(8);
 
-                    parser.write_dump(format_args!("Op: R ITC: {}\n", itc))?;
+                    parser.write_dump(format_args!("Op: R\nITC: {}\n", itc))?;
 
                     assert!(reader.data().len() - reader.cursor() >= 12 + itc * 24, "Size of field {} < 12 * itc * 24", reader.data().len());
 
@@ -441,9 +440,9 @@ impl<'a> OpCode0501<'a> {
     fn kdilk(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
         assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
 
-        if parser.can_dump(1) {
-            parser.write_dump(format_args!("{}", reader.to_hex_dump()))?;
-        }
+        // if parser.can_dump(1) {
+        //     parser.write_dump(format_args!("{}", reader.to_hex_dump()))?;
+        // }
 
         Ok(())
     }

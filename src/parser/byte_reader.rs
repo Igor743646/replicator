@@ -219,7 +219,7 @@ impl<'a> ByteReader<'a> {
         Ok(res)
     }
 
-    pub fn read_redo_record_header(&mut self, version : u32) -> Result<RecordHeader, OLRError> {
+    pub fn read_record_header(&mut self, version : u32) -> Result<RecordHeader, OLRError> {
         self.validate_size(24)?;
 
         let mut result = RecordHeader::default();

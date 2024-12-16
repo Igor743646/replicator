@@ -3,10 +3,12 @@ use std::collections::VecDeque;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::Write;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::Instant;
 use std::path::PathBuf;
 
 use clap::error::Result;
+use crossbeam::channel::Receiver;
 use log::{info, trace, warn};
 
 use crate::builder::JsonBuilder;
@@ -74,6 +76,16 @@ impl Ord for Parser {
     }
 }
 
+struct ParserState<'a> {
+    pub to_read : usize,
+    pub start_block : usize,
+    pub end_block : usize,
+    pub redo_log_header : RedoLogHeader,
+    pub record_position : usize,
+    pub timestamp : TypeTimestamp,
+    pub record : Option<&'a mut Record>
+}
+
 impl Parser {
     pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, file_path : PathBuf, sequence : TypeSeq) -> Result<Self, OLRError> {
         let mut result = Self {
@@ -125,13 +137,18 @@ impl Parser {
         self.version
     }
 
+    fn start_reader(&self) -> Result<(Receiver<ReaderMessage>, JoinHandle<Result<(), OLRError>>), OLRError> {
+        let (sx, rx) = self.context_ptr.get_reader_channel();
+        let fs_reader = Reader::new(self.context_ptr.clone(), self.file_path.clone(), sx);
+        let handle = spawn(fs_reader)?;
+        let result = (rx, handle);
+        Ok(result)
+    }
+
     pub fn parse(&mut self) -> Result<(), OLRError> {
 
         let start_parsing_time = Instant::now();
-
-        let (sx, rx) = self.context_ptr.get_reader_channel();
-        let fs_reader = Reader::new(self.context_ptr.clone(), self.file_path.clone(), sx);
-        let fs_reader_handle = spawn(fs_reader)?;
+        let (rx, fs_reader_handle) = self.start_reader()?;
 
         let message = rx.recv().unwrap();
 
@@ -141,16 +158,18 @@ impl Parser {
                 self.endian = endian.into();
                 self.metadata = metadata.into();
             },
-            data => return olr_err!(ChannelSend, "Wrong data in first message: {:?}", data),
+            data => return olr_err!(ChannelRecv, "Wrong data in first message: {:?}", data),
         }
 
-        let mut to_read : usize = 0;
-        let mut start_block : usize = 0;
-        let mut end_block : usize = 0;
-        let mut redo_log_header : RedoLogHeader = Default::default();
-        let mut record_position = 0;
-        let mut timestamp : TypeTimestamp = Default::default();
-        let mut record : Option<&mut Record> = None;
+        let mut state = ParserState {
+            to_read : 0,
+            start_block : 0,
+            end_block : 0,
+            redo_log_header : Default::default(),
+            record_position : 0,
+            timestamp : Default::default(),
+            record :  None,
+        };
 
         loop {
             let message: ReaderMessage = rx.recv().unwrap();
@@ -161,121 +180,119 @@ impl Parser {
                     (chunk, size / self.block_size.unwrap())
                 },
                 ReaderMessage::Eof => break,
-                _ => return olr_err!(ChannelSend, "Unexpected message type: {:?}", message),
+                _ => return olr_err!(ChannelRecv, "Unexpected message type: {:?}", message),
             };
 
             for idx in 0 .. blocks_count {
                 let range = idx * self.block_size.unwrap() .. (idx + 1) * self.block_size.unwrap();
-                let phisical_block = &chunk[range];
-
-                if start_block == 0 {
-                    self.check_file_header(&phisical_block)?;
-                    start_block += 1;
-                    end_block += 1;
-                    continue;
-                }
-
-                if start_block == 1 {
-                    redo_log_header = self.get_redo_log_header(&phisical_block)?;
-                    if self.can_dump(1) {
-                        self.write_dump(format_args!("{:#?}", redo_log_header))?;
-                    }
-                    self.version = Some(redo_log_header.oracle_version);
-                    start_block += 1;
-                    end_block += 1;
-                    continue;
-                }
-
-                let mut reader = ByteReader::from_bytes(&phisical_block);
-                reader.set_endian(self.endian.unwrap());
-
-                reader.skip_bytes(16); // Skip block header
-                
-                if start_block == end_block {
-                    let redo_record_header = match reader.read_redo_record_header(redo_log_header.oracle_version) {
-                        Ok(x) => x,
-                        Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 68))
-                    };
-
-                    assert!(redo_record_header.expansion.is_some(), "Dump: {}", reader.to_error_hex_dump(16, 68));
-                    end_block = start_block + redo_record_header.expansion.as_ref().unwrap().records_count as usize;
-                    timestamp = redo_record_header.expansion.as_ref().unwrap().records_timestamp.clone();
-
-                    reader.set_cursor(16)?;
-                }
-
-                while reader.cursor() < self.block_size.unwrap() {
-                    if to_read == 0 {
-                        if reader.cursor() + 20 >= self.block_size.unwrap() {
-                            break;
-                        }
-
-                        let prev_offset: usize = reader.cursor();
-                        let redo_record_header: RecordHeader = match reader.read_redo_record_header(redo_log_header.oracle_version) {
-                            Ok(x) => x,
-                            Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 24))
-                        };
-
-                        if redo_record_header.record_size == 0 {
-                            break;
-                        }
-
-                        to_read = redo_record_header.record_size as usize;
-                        record_position = 0;
-
-                        record = Some(self.records_manager.reserve_record(to_read)?);
-                        record.as_mut().unwrap().scn = redo_record_header.scn;
-                        record.as_mut().unwrap().sub_scn = redo_record_header.sub_scn;
-                        record.as_mut().unwrap().block = start_block as u32;
-                        record.as_mut().unwrap().offset = prev_offset as u16;
-                        record.as_mut().unwrap().size = redo_record_header.record_size;
-                        record.as_mut().unwrap().timestamp = timestamp.clone();
-
-                        reader.set_cursor(prev_offset)?;
-                    }
-
-                    let to_copy = std::cmp::min(to_read, self.block_size.unwrap() - reader.cursor());
-
-                    let buffer = &mut record
-                            .as_mut()
-                            .unwrap()
-                            .data_mut()[record_position .. record_position + to_copy];
-
-                    assert!(buffer.len() == to_copy);
-                    reader.read_bytes_into(to_copy, buffer).unwrap();
-                    
-                    to_read -= to_copy;
-                    record_position += to_copy;
-                }
-
-                if start_block + 1 == end_block {
-                    // Process data here
-
-                    while self.records_manager.records_count() > 0 {
-                        let record = self.records_manager.drop_record();
-
-                        if record.is_none() {
-                            return olr_perr!("No record, but expected");
-                        }
-
-                        self.analize_record(record.unwrap())?;
-                    }
-
-                    self.records_manager.free_chunks();
-                }
-                start_block += 1;
+                self.process_block(&mut state, &chunk[range])?;
             }
 
-            {
-                info!("Processed chunk");
-                self.context_ptr.free_chunk(chunk);
-            }
+            info!("Processed chunk");
+            self.context_ptr.free_chunk(chunk);
         }
 
         assert!(self.records_manager.records_count() == 0);
 
         info!("Time elapsed: {:?}", start_parsing_time.elapsed());
         fs_reader_handle.join().unwrap()?;
+        Ok(())
+    }
+
+    fn process_block(&mut self, state : &mut ParserState, phisical_block : &[u8]) -> Result<(), OLRError> {
+        if state.start_block == 0 {
+            self.check_file_header(&phisical_block)?;
+            state.start_block += 1;
+            state.end_block += 1;
+            return Ok(());
+        }
+
+        if state.start_block == 1 {
+            state.redo_log_header = self.get_redo_log_header(&phisical_block)?;
+            if self.can_dump(1) {
+                self.write_dump(format_args!("{:#?}", state.redo_log_header))?;
+            }
+            self.version = Some(state.redo_log_header.oracle_version);
+            state.start_block += 1;
+            state.end_block += 1;
+            return Ok(());
+        }
+
+        let mut reader = ByteReader::from_bytes(&phisical_block);
+        reader.set_endian(self.endian.unwrap());
+
+        reader.skip_bytes(16); // Skip block header
+        
+        if state.start_block == state.end_block {
+            let record_header = match reader.read_record_header(state.redo_log_header.oracle_version) {
+                Ok(x) => x,
+                Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 68))
+            };
+
+            assert!(record_header.expansion.is_some(), "Dump: {}", reader.to_error_hex_dump(16, 68));
+            let record_expansion = record_header.expansion.as_ref().unwrap();
+            state.end_block = state.start_block + record_expansion.records_count as usize;
+            state.timestamp = record_expansion.records_timestamp.clone();
+
+            reader.set_cursor(16)?;
+        }
+
+        while reader.cursor() < self.block_size.unwrap() {
+            if state.to_read == 0 {
+                if reader.cursor() + 20 >= self.block_size.unwrap() {
+                    break;
+                }
+
+                let prev_offset: usize = reader.cursor();
+                let redo_record_header: RecordHeader = match reader.read_record_header(state.redo_log_header.oracle_version) {
+                    Ok(x) => x,
+                    Err(err) => return olr_perr!("Parse record header error: {}. {}", err, reader.to_error_hex_dump(16, 24))
+                };
+
+                if redo_record_header.record_size == 0 {
+                    break;
+                }
+
+                state.to_read = redo_record_header.record_size as usize;
+                state.record_position = 0;
+
+                let reserved_record = self.records_manager.reserve_record(state.to_read)?;
+                reserved_record.scn = redo_record_header.scn;
+                reserved_record.sub_scn = redo_record_header.sub_scn;
+                reserved_record.block = state.start_block as u32;
+                reserved_record.offset = prev_offset as u16;
+                reserved_record.size = redo_record_header.record_size;
+                reserved_record.timestamp = state.timestamp.clone();
+                state.record = Some(reserved_record);
+
+                reader.set_cursor(prev_offset)?;
+            }
+
+            let to_copy = std::cmp::min(state.to_read, self.block_size.unwrap() - reader.cursor());
+
+            let buffer = &mut state.record
+                    .as_mut()
+                    .unwrap()
+                    .data_mut()[state.record_position .. state.record_position + to_copy];
+
+            assert!(buffer.len() == to_copy);
+            reader.read_bytes_into(to_copy, buffer).unwrap();
+            
+            state.to_read -= to_copy;
+            state.record_position += to_copy;
+        }
+
+        if state.start_block + 1 == state.end_block {
+            // Process data here
+
+            while let Some(record) = self.records_manager.drop_record() {
+                self.analize_record(record)?;
+            }
+
+            self.records_manager.free_chunks();
+        }
+        state.start_block += 1;
+
         Ok(())
     }
 
@@ -418,15 +435,13 @@ impl Parser {
 
 
 impl RecordAnalizer for Parser {
-    fn analize_record(&mut self, record_ptr : *mut Record) -> Result<(), OLRError> {
+    fn analize_record(&mut self, record : &Record) -> Result<(), OLRError> {
         
-        let record = unsafe { record_ptr.as_mut().unwrap() };
-
-        trace!("Analize block: {} offset: {} scn: {} subscn: {}", record.block, record.offset, record.scn, record.sub_scn);
+        trace!("Analize record: block: {} offset: {} scn: {} subscn: {}", record.block, record.offset, record.scn, record.sub_scn);
 
         let mut reader = ByteReader::from_bytes(record.data());
         reader.set_endian(self.endian.unwrap());
-        let record_header = reader.read_redo_record_header(self.version.unwrap())?;
+        let record_header = reader.read_record_header(self.version.unwrap())?;
         
         if record_header.record_size != record.size {
             return olr_perr!("Sizes must be equal, but: {} != {}", record_header.record_size, record.size);
@@ -436,7 +451,7 @@ impl RecordAnalizer for Parser {
             self.write_dump(format_args!("\n\n########################################################\n"))?;
             self.write_dump(format_args!("#                     REDO RECORD                      #\n"))?;
             self.write_dump(format_args!("########################################################\n"))?;
-            self.write_dump(format_args!("\nHeader: {}", record_header))?;
+            self.write_dump(format_args!("\nHeader: {}\n", record_header))?;
         }
 
         let mut vector_info_pull : VecDeque<VectorInfo> = VecDeque::with_capacity(2);
@@ -451,9 +466,7 @@ impl RecordAnalizer for Parser {
 
             let vector_body_size : usize = vector_header.fields_sizes
                 .iter()
-                .map(|x| {
-                    ((*x + 3) & !3) as usize
-                })
+                .map(|x| ((*x + 3) & !3) as usize )
                 .sum();
 
             let vec_reader = VectorReader::new(

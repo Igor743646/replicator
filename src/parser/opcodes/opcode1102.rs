@@ -114,6 +114,8 @@ impl<'a> OpCode1102<'a> {
                 if parser.can_dump(1) {
                     let uba = reader.read_uba()?;
                     parser.write_dump(format_args!("Op: F XID: {} UBA: {}\n", self.xid, uba))?;
+
+                    parser.write_dump(format_args!("{}\n", reader.to_hex_dump()))?;
                 }
             },
             constants::KTBOP_C => {
