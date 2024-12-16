@@ -1,5 +1,5 @@
-use super::{VectorInfo, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::{TypeFb, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use super::{fields::{kdoopcode::Kdoopcode, ktbredo::Ktbredo, VectorField}, VectorInfo, VectorParser};
+use crate::{common::{errors::OLRError, types::{TypeFb, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
 pub struct OpCode1102<'a> {
@@ -44,7 +44,7 @@ impl<'a> OpCode1102<'a> {
     fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
 
         match self.reader.next() {
-            Some(mut field_reader) => self.ktb_redo(parser, &mut field_reader, 0),
+            Some(mut field_reader) => self.ktbredo(parser, &mut field_reader, 0),
             None => olr_perr!("Expect ktb_redo field")
         }?;
         
@@ -61,6 +61,7 @@ impl<'a> OpCode1102<'a> {
                 std::unimplemented!("Compressed data");
             } else {
                 let mut nulls: u8 = 0;
+                ktb_opcode_reader.set_cursor(self.nulls_offset)?;
                 for i in 0 .. self.cc {
                     let mask = 1u8 << (i & 0b111);
                     if mask == 1 {
@@ -86,128 +87,24 @@ impl<'a> OpCode1102<'a> {
         Ok(())
     }
 
-    fn ktb_redo(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() >= 8, "Size of field {} < 8", reader.data().len());
-
-        let ktb_op = reader.read_u8()?;
-        let flg = reader.read_u8()?;
-        reader.skip_bytes(2);
-
-        if flg & 0x08 != 0 {
-            reader.skip_bytes(4);
-        }
-
-        if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}; KTBREDO - {}] OP: {}\n", 
-                    field_num, reader.data().len(), ktb_op))?;
-        }
-
-        match ktb_op & 0x0F {
-            constants::KTBOP_F => {
-                assert!(reader.data().len() - reader.cursor() >= 16, "Size of field {} < 16", reader.data().len());
-
-                let usn = reader.read_u16()?;
-                let slt = reader.read_u16()?;
-                let seq = reader.read_u32()?;
-                self.xid = TypeXid::new(usn, slt, seq);
-
-                if parser.can_dump(1) {
-                    let uba = reader.read_uba()?;
-                    parser.write_dump(format_args!("Op: F XID: {} UBA: {}\n", self.xid, uba))?;
-
-                    parser.write_dump(format_args!("{}\n", reader.to_hex_dump()))?;
-                }
-            },
-            constants::KTBOP_C => {
-                assert!(reader.data().len() - reader.cursor() >= 8, "Size of field {} < 8", reader.data().len());
-
-                if parser.can_dump(1) {
-                    let uba = reader.read_uba()?;
-                    parser.write_dump(format_args!("Op: C UBA: {}\n", uba))?;
-                }
-            },
-            constants::KTBOP_Z => {
-                if parser.can_dump(1) {
-                    parser.write_dump(format_args!("Op: Z\n"))?;
-                }
-            },
-            constants::KTBOP_L => {
-                assert!(reader.data().len() - reader.cursor() >= 24, "Size of field {} < 24", reader.data().len());
-
-                if parser.can_dump(1) {
-                    let usn = reader.read_u16()?;
-                    let slt = reader.read_u16()?;
-                    let seq = reader.read_u32()?;
-                    let itl_xid = TypeXid::new(usn, slt, seq);
-                    let uba = reader.read_uba()?;
-                    reader.skip_bytes(8);
-                    
-                    parser.write_dump(format_args!("Op: L ITL_XID: {} UBA: {}\n", itl_xid, uba))?;
-                }
-            },
-            _ => {
-                return olr_perr!("Unknown ktb operation: {}. Dump: {}", ktb_op & 0x0F, reader.to_hex_dump());
-            },
-        }
-
-        Ok(())
-    }
-
-    fn kdo_opcode_irp(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() >= 48, "Size of field {} < 48", reader.data().len());
-
-        self.fb = reader.read_u8()?.into();
-        let lb = reader.read_u8()?;
-        self.cc = reader.read_u8()?;
-        let cki = reader.read_u8()?;
-        reader.skip_bytes(20);
-        self.size_delt = reader.read_u16()?;
-        self.slot = reader.read_u16()?;
-        reader.skip_bytes(1);
-
-        self.nulls_field = field_num;
-        self.nulls_offset = reader.cursor();
-
-        if parser.can_dump(1) {
-            parser.write_dump(format_args!("FB: {} SLOT: {} CC: {}\n", self.fb, self.slot, self.cc))?;
-            parser.write_dump(format_args!("lb: {} cki: {} size_delt: {}\n", lb, cki, self.size_delt))?;
-            parser.write_dump(format_args!("nulls: "))?;
-
-            let mut nulls = reader.read_u8()?;
-            for i in 0 .. self.cc {
-                let bits = 1u8 << (i & 0b111);
-
-                parser.write_dump(format_args!("{}", (nulls & bits != 0) as u8))?;
-                
-                if bits == 0b10000000 {
-                    nulls = reader.read_u8()?;
-                }
-            }
-            parser.write_dump(format_args!("\n"))?;
-            reader.set_cursor(self.nulls_offset)?;
-        }
-
-        assert!(reader.data().len() >= 45 + ((self.cc as usize + 7) / 8), "Size of field {} < 26 + (cc + 7) / 8", reader.data().len());
-
+    fn ktbredo(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+        let ktbredo = Ktbredo::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
+        if let Some(xid) = ktbredo.xid { self.xid = xid; } 
         Ok(())
     }
 
     fn kdo_opcode(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() >= 16, "Size of field {} < 16", reader.data().len());
+        let kdoopcode = Kdoopcode::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
+        self.bdba = kdoopcode.bdba;
+        self.op = kdoopcode.op;
+        self.flags = kdoopcode.flags;
 
-        self.bdba = reader.read_u32()?;
-        reader.skip_bytes(6);
-        self.op = reader.read_u8()?;
-        self.flags = reader.read_u8()?;
-        reader.skip_bytes(4);
-
-        if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}; KTBOPCODE - {}] OP: IRP\n", field_num, reader.data().len()))?;
-            parser.write_dump(format_args!("BDBA: {} OP: {} FLAGS: {}\n", self.bdba, self.op, self.flags))?;
-        }
-
-        assert!(self.op & 0x1F == constants::OP_IRP, "Operation is not IRP");
-        self.kdo_opcode_irp(parser, reader, field_num)?;
+        if let Some(fb) = kdoopcode.fb { self.fb = fb; }
+        if let Some(cc) = kdoopcode.cc { self.cc = cc; }
+        if let Some(slot) = kdoopcode.slot { self.slot = slot; }
+        if let Some(size_delt) = kdoopcode.size_delt { self.size_delt = size_delt; }
+        if let Some(nulls_field) = kdoopcode.nulls_field { self.nulls_field = nulls_field; }
+        if let Some(nulls_offset) = kdoopcode.nulls_offset { self.nulls_offset = nulls_offset; }
 
         Ok(())
     }

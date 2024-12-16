@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use crate::common::errors::OLRError;
 
 use super::{parser_impl::Parser, record_reader::VectorReader};
+pub mod fields;
 pub mod opcode0502;
 pub mod opcode0520;
 pub mod opcode0504;

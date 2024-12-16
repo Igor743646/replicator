@@ -61,13 +61,13 @@ impl std::fmt::Display for VectorHeader {
             (24, _) => "Logminer related (DDL or OBJV# redo)",
             (_, _) => "Unknown",
         };
-        write!(f, "OpCode: {}.{} ({})\n", self.op_code.0, self.op_code.1, opcode_desc)?;
-        write!(f, "Class: {} Absolute file number: {} DBA: {}\n", self.class, self.afn, self.dba)?;
-        write!(f, "Vector SCN: {} SEQ: {} TYP: {}\n", self.vector_scn, self.seq, self.typ)?;
+        write!(f, "| OpCode: {}.{} ({})\n", self.op_code.0, self.op_code.1, opcode_desc)?;
+        write!(f, "| Class: {} Absolute file number: {} DBA: {}\n", self.class, self.afn, self.dba)?;
+        write!(f, "| Vector SCN: {} SEQ: {} TYP: {}\n", self.vector_scn, self.seq, self.typ)?;
         if let Some(ref ext) = self.expansion {
-            write!(f, "Container id: {} Flag: {}\n", ext.container_id, ext.flag)?;
+            write!(f, "| Container id: {} Flag: {}\n", ext.container_id, ext.flag)?;
         }
-        write!(f, "Fields count: {}\n", self.fields_count)?;
-        write!(f, "Fields sizes: {}\n", self.fields_sizes.iter().map(|x| -> String {format!("{} ", x)}).collect::<String>())
+        write!(f, "| Fields count: {}\n", self.fields_count)?;
+        write!(f, "| Fields sizes: {}\n", self.fields_sizes.iter().map(|x| -> String {format!("{} ", x)}).collect::<String>())
     }
 }

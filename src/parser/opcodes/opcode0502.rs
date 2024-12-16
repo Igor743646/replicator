@@ -1,4 +1,4 @@
-use super::{VectorInfo, VectorParser};
+use super::{fields::{kteop::Kteop, ktudh::Ktudh, pdb::Pdb, VectorField}, VectorInfo, VectorParser};
 use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
@@ -48,52 +48,19 @@ impl<'a> OpCode0502<'a> {
     }
 
     fn ktudh(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() == 32, "Size of field {} != 32", reader.data().len());
-
-        let xid_usn = (self.reader.header.class - 15) / 2;
-        let xid_slot = reader.read_u16()?;
-        reader.skip_bytes(2);
-        let xid_seq = reader.read_u32()?;
-        reader.skip_bytes(8);
-        let flg = reader.read_u16()?;
-        reader.skip_bytes(14);
-
-        self.xid = (((xid_usn as u64) << 48) | ((xid_slot as u64) << 32) | xid_seq as u64).into();
-        self.flg = flg;
-
-        if parser.can_dump(1) {
-            parser.write_dump(format_args!("\n[Change {}; KTUDH] XID: {}\nFlag: {:016b}\n", field_num, self.xid, self.flg))?;
-        }
-
+        let ktudh = Ktudh::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
+        self.xid = ktudh.xid;
+        self.flg = ktudh.flg;
         Ok(())
     }
 
     fn pdb(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() == 4, "Size of field {} != 4", reader.data().len());
-
-        if parser.can_dump(1) {
-            let pdb_id = reader.read_u32()?;
-            parser.write_dump(format_args!("\n[Change {}; PDB] PDB id: {}\n", field_num, pdb_id))?;
-        }
-        
+        Pdb::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         Ok(())
     }
 
     fn kteop(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
-        assert!(reader.data().len() == 36, "Size of field {} != 36", reader.data().len());
-
-        if parser.can_dump(1) {
-            reader.skip_bytes(4);
-            let ext = reader.read_u32()?;
-            reader.skip_bytes(4);
-            let ext_size = reader.read_u32()?;
-            let highwater = reader.read_u32()?;
-            reader.skip_bytes(4);
-            let offset = reader.read_u32()?;
-
-            parser.write_dump(format_args!("\n[Change {}; KTEOP] ext: {} ext size: {} HW: {} offset: {}\n", field_num, ext, ext_size, highwater, offset))?;
-        }
-
+        Kteop::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         Ok(())
     }
 }

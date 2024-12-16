@@ -129,6 +129,15 @@ impl Parser {
         Ok(())
     }
 
+    pub fn dump_column(&mut self, bytes : &[u8], col_num : usize, col_len : usize, is_null : bool) -> Result<(), OLRError> {
+        if is_null {
+            self.write_dump(format_args!("Col {:>3} [{}]: NULL\n", col_num, col_len))?;
+        } else {
+            self.write_dump(format_args!("Col {:>3} [{}]: {:02X?}\n", col_num, col_len, &bytes[.. col_len as usize] ))?;
+        }
+        Ok(())
+    }
+
     pub fn sequence(&self) -> TypeSeq {
         self.sequence
     }
