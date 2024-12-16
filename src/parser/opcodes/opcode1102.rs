@@ -62,23 +62,18 @@ impl<'a> OpCode1102<'a> {
             } else {
                 let mut nulls: u8 = 0;
                 ktb_opcode_reader.set_cursor(self.nulls_offset)?;
-                for i in 0 .. self.cc {
-                    let mask = 1u8 << (i & 0b111);
+                for col_num in 0 .. self.cc {
+                    let mask = 1u8 << (col_num & 0b111);
                     if mask == 1 {
                         nulls = ktb_opcode_reader.read_u8()?;
                     }
                     
-                    if i > 0 {
+                    if col_num > 0 {
                         field_reader = self.reader.next().unwrap();
                     }
 
                     if parser.can_dump(1) {
-                        if nulls & mask == 0 {
-                            parser.write_dump(format_args!("Col [{}]: {:02X?}\n", field_reader.data().len(), field_reader.data()))?;
-                        } else {
-                            assert!(field_reader.data().len() == 0, "Size of field {} != 0", field_reader.data().len());
-                            parser.write_dump(format_args!("Col: NULL\n"))?;
-                        }
+                        parser.dump_column(&field_reader.data(), col_num as usize, field_reader.data().len(), nulls & mask != 0)?;
                     }
                 }
             }
