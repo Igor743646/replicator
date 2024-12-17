@@ -1,4 +1,4 @@
-use super::{VectorInfo, VectorParser};
+use super::{VectorData, VectorParser};
 use crate::{common::{constants, errors::OLRError}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
@@ -161,9 +161,9 @@ impl<'a> OpCode0520<'a> {
 }
 
 impl<'a> VectorParser<'a> for OpCode0520<'a> {
-    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorInfo<'a>, OLRError> {
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>, OLRError> {
         Ok(
-            VectorInfo::OpCode0520(
+            VectorData::OpCode0520(
                 OpCode0520::new(parser, reader)?
             )
         )

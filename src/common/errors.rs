@@ -28,6 +28,8 @@ pub enum OLRErrorCode {
     OracleConnection,
     OracleQuery,
     SchemaReading,
+    TransactionStart = 300000,
+    TransactionClose,
 }
 
 #[derive(Debug)]

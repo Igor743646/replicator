@@ -9,6 +9,7 @@ mod oracle_logical_replicator;
 #[macro_use]
 mod common;
 mod ctx; 
+mod transactions;
 mod metadata;
 mod locales;
 mod oradefs;

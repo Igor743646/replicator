@@ -1,4 +1,4 @@
-use super::{fields::{kdoopcode::Kdoopcode, ktbredo::Ktbredo, ktub::Ktub, ktudb::Ktudb, VectorField}, VectorInfo, VectorParser};
+use super::{fields::{kdoopcode::Kdoopcode, ktbredo::Ktbredo, ktub::Ktub, ktudb::Ktudb, VectorField}, VectorData, VectorParser};
 use crate::{common::{constants, errors::OLRError, types::{TypeFb, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
@@ -344,9 +344,9 @@ impl<'a> OpCode0501<'a> {
 }
 
 impl<'a> VectorParser<'a> for OpCode0501<'a> {
-    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorInfo<'a>, OLRError> {
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>, OLRError> {
         Ok(
-            VectorInfo::OpCode0501(
+            VectorData::OpCode0501(
                 OpCode0501::new(parser, reader)?
             )
         )

@@ -18,7 +18,6 @@ pub struct Ctx {
     pub log_level : u64,
     pub trace : u64,
     pub flags : u64,
-    pub skip_rollback : u64,
     pub disable_checks : u64,
 
     // State
@@ -32,13 +31,13 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn new(dump : Dump, log_level : u64, trace : u64, flags : u64, skip_rollback : u64, disable_checks : u64, 
+    pub fn new(dump : Dump, log_level : u64, trace : u64, flags : u64, disable_checks : u64, 
         checkpoint_interval_s : u64, checkpoint_interval_mb : u64, checkpoint_keep : u64,
         schema_force_interval : u64, memory_min_mb: usize , memory_max_mb: usize, read_buffer_max: usize) -> Result<Self, OLRError> {
         debug!("Initialize Ctx");
         
         Ok(Self {
-            dump, log_level : log_level, trace, flags, skip_rollback, disable_checks,
+            dump, log_level : log_level, trace, flags, disable_checks,
             checkpoint_interval_s, checkpoint_interval_mb, checkpoint_keep,
             schema_force_interval,
             memory_manager : MemoryPool::new(memory_min_mb, memory_max_mb, read_buffer_max)?.into()

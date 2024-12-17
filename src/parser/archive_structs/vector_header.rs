@@ -1,13 +1,13 @@
 use crate::common::types::TypeScn;
 
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct VectorHeaderExpansion {
     pub container_id    : u16,
     pub flag            : u16,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct VectorHeader {
     pub op_code         : (u8, u8),
     pub class           : u16,

@@ -1,6 +1,6 @@
 use std::fmt::{Formatter, Debug, Display};
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeXid {
     pub undo_segment_number : u16,
     pub slot_number : u16,

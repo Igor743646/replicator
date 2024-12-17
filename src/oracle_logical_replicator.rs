@@ -199,15 +199,10 @@ impl OracleLogicalReplicator {
                                                     "user", "password", "server", "redo-log", "path-mapping", "log-archive-format"])?;
 
             let flags = self.get_json_field_u64(source_json, "flags")?.unwrap_or(0);
-            let skip_rollback = self.get_json_field_u64(source_json, "skip-rollback")?.unwrap_or(0);
             let disable_checks = self.get_json_field_u64(reader_json, "disable-checks")?.unwrap_or(0);
             
             if flags > 0x7FFFF {
                 return olr_err!(NotValidField, "Field 'flags' ({}) expected: one of {{0 .. 524287}}", flags);
-            }
-            
-            if skip_rollback > 1 {
-                return olr_err!(NotValidField, "Field 'skip-rollback' ({}) expected: one of {{0, 1}}", flags);
             }
 
             if disable_checks > 15 {
@@ -254,7 +249,7 @@ impl OracleLogicalReplicator {
 
             // Context init
             let context_ptr = Arc::new(Ctx::new(
-                dump, log_level, trace, flags, skip_rollback, disable_checks, 
+                dump, log_level, trace, flags, disable_checks, 
                 checkpoint_interval_s, checkpoint_interval_mb, checkpoint_keep,
                 schema_force_interval, memory_min_mb, memory_max_mb, read_buffer_max
             )?);

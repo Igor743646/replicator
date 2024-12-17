@@ -2,17 +2,18 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::fmt::{Formatter, Debug};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use log::{info, trace, warn};
 
 use crate::builder::JsonBuilder;
 use crate::common::types::TypeSeq;
 use crate::ctx::Ctx;
+use crate::transactions::transaction_buffer::TransactionBuffer;
 use crate::{common::errors::OLRError, olr_err, parser::parser_impl::Parser};
 use crate::common::OLRErrorCode::*;
 
 pub trait ArchiveDigger where Self: Send + Sync + Debug {
-    fn get_parsers_queue(&self) -> Result<BinaryHeap<Reverse<Parser>>, OLRError>;
+    fn get_parsers_queue(&self, transaction_buffer : Arc<Mutex<TransactionBuffer>>) -> Result<BinaryHeap<Reverse<Parser>>, OLRError>;
     fn get_sequence_from_file(&self, log_archive_format : &String, file : &PathBuf) -> Option<u32>;
 }
 
@@ -51,7 +52,7 @@ impl ArchiveDiggerOffline {
 }
 
 impl ArchiveDigger for ArchiveDiggerOffline {
-    fn get_parsers_queue(&self) -> Result<BinaryHeap<Reverse<Parser>>, OLRError> {
+    fn get_parsers_queue(&self, transaction_buffer : Arc<Mutex<TransactionBuffer>>) -> Result<BinaryHeap<Reverse<Parser>>, OLRError> {
         if self.archive_log_format.is_empty() {
             return olr_err!(MissingFile, "Missing location of archived redo logs. Archive log format is empty.");
         }
@@ -126,7 +127,7 @@ impl ArchiveDigger for ArchiveDiggerOffline {
 
                 info!("Found sequence: {:?}", sequence);
 
-                let parser = Parser::new(self.context_ptr.clone(), self.builder_ptr.clone(), archive_file, sequence)?;
+                let parser = Parser::new(self.context_ptr.clone(), self.builder_ptr.clone(), transaction_buffer.clone(), archive_file, sequence)?;
                 parser_queue.push(Reverse(parser));
             }
         }

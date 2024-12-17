@@ -2,7 +2,8 @@ use core::fmt;
 use std::collections::VecDeque;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::Write;
-use std::sync::Arc;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Instant;
 use std::path::PathBuf;
@@ -25,10 +26,11 @@ use crate::parser::opcodes::opcode0502::OpCode0502;
 use crate::parser::opcodes::opcode0504::OpCode0504;
 use crate::parser::opcodes::opcode0520::OpCode0520;
 use crate::parser::opcodes::opcode1102::OpCode1102;
-use crate::parser::opcodes::{VectorInfo, VectorParser};
+use crate::parser::opcodes::{Vector, VectorData, VectorKind, VectorParser};
 use crate::parser::record_analizer::RecordAnalizer;
 use crate::parser::record_reader::VectorReader;
 use crate::parser::records_manager::Record;
+use crate::transactions::transaction_buffer::TransactionBuffer;
 use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
 use crate::common::errors::OLRErrorCode::*;
 
@@ -40,6 +42,7 @@ use super::records_manager::RecordsManager;
 pub struct Parser {
     context_ptr : Arc<Ctx>,
     builder_ptr : Arc<JsonBuilder>,
+    transaction_buffer : Arc<Mutex<TransactionBuffer>>,
     file_path : PathBuf,
     sequence : TypeSeq,
 
@@ -87,10 +90,11 @@ struct ParserState<'a> {
 }
 
 impl Parser {
-    pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, file_path : PathBuf, sequence : TypeSeq) -> Result<Self, OLRError> {
+    pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, transaction_buffer : Arc<Mutex<TransactionBuffer>>, file_path : PathBuf, sequence : TypeSeq) -> Result<Self, OLRError> {
         let mut result = Self {
             context_ptr: context_ptr.clone(), 
             builder_ptr,
+            transaction_buffer,
             file_path, 
             sequence,
             block_size : None,
@@ -440,6 +444,38 @@ impl Parser {
 
         (checksum & 0xFFFF) as u16
     }
+
+    fn push_to_transaction_begin(&mut self, record : &Record, begin : Vector) -> Result<(), OLRError> {
+        let xid = begin.xid().unwrap();
+
+        if xid.sequence_number == 0 { // INTERNAL
+            return Ok(());
+        }
+
+        let mut guard = self.transaction_buffer.lock().unwrap();
+        let transaction = guard.find_transaction(xid, true)?.unwrap();
+
+        transaction.set_start_info(record.scn, record.timestamp);
+
+        Ok(())
+    }
+
+    fn push_to_transaction_double(&mut self, vector1 : Vector, vector2 : Vector) -> Result<(), OLRError> {
+        let mut guard: std::sync::MutexGuard<'_, TransactionBuffer> = self.transaction_buffer.lock().unwrap();
+        let xid = vector1.xid().expect("vector1 must be an opcode with xid");
+        
+        guard.add_double_in_transaction(xid, vector1, vector2)?;
+        Ok(())
+    }
+
+    fn push_to_transaction_commit(&mut self, commit : Vector) -> Result<(), OLRError> {
+        let mut guard = self.transaction_buffer.lock().unwrap();
+        // guard.close_transaction(commit.xid)?;
+
+        std::unimplemented!("Commit");
+
+        Ok(())
+    }
 }
 
 
@@ -463,81 +499,51 @@ impl RecordAnalizer for Parser {
             self.write_dump(format_args!("\nHeader: {}\n", record_header))?;
         }
 
-        let mut vector_info_pull : VecDeque<VectorInfo> = VecDeque::with_capacity(2);
+        let mut vector_pull : VecDeque<Vector> = VecDeque::with_capacity(2);
         while !reader.eof() {
-            let vector_header: VectorHeader = reader.read_redo_vector_header(self.version.unwrap())?;
-            trace!("Analize vector: {:?} offset: {}", vector_header.op_code, reader.cursor());
-            reader.align_up(4);
-
-            if self.can_dump(1) {
-                self.write_dump(format_args!("\n{}", vector_header))?;
-            }
-
-            let vector_body_size : usize = vector_header.fields_sizes
-                .iter()
-                .map(|x| ((*x + 3) & !3) as usize )
-                .sum();
-
-            let vec_reader = VectorReader::new(
-                vector_header, 
-                &reader.data()[reader.cursor() .. reader.cursor() + vector_body_size]
-            );
-
-            reader.skip_bytes(vector_body_size);
-
-            let vector_info = match vec_reader.header.op_code {
-                (5, 1) => OpCode0501::parse(self, vec_reader)?,
-                (5, 2) => OpCode0502::parse(self, vec_reader)?,
-                (5, 4) => OpCode0504::parse(self, vec_reader)?,
-                (5, 20) => OpCode0520::parse(self, vec_reader)?,
-                (11, 2) => OpCode1102::parse(self, vec_reader)?,
-                (a, b) => {
-                    warn!("Opcode: {}.{} not implemented", a, b); 
-                    continue;
-                },
-            };
-            vector_info_pull.push_back(vector_info);
+            let vector = Vector::parse(self, &mut reader, self.version.unwrap())?;
             
-            if vector_info_pull.len() == 2 {
+            vector_pull.push_back(vector);
+            
+            if vector_pull.len() == 2 {
 
-                let first = vector_info_pull.pop_front().unwrap();
-                let second = vector_info_pull.pop_front().unwrap();
+                let first = vector_pull.pop_front().unwrap();
+                let second = vector_pull.pop_front().unwrap();
 
-                match (first, second) {
-                    (VectorInfo::OpCode0501(opcode0501), VectorInfo::OpCode1102(opcode1102)) => {
-                        self.builder_ptr.process_insert(record.scn, record.timestamp, opcode0501, opcode1102)?;
+                match (first.kind(), second.kind()) {
+                    (VectorKind::OpCode0501, VectorKind::OpCode1102) => {
                     },
-                    (a, b) => {
-                        info!("Unknown pair: {} {}", a, b);
+                    (VectorKind::OpCode0501, VectorKind::OpCode0520) => {
+                        self.push_to_transaction_double(first, second)?;
+                    },
+                    (_, _) => {
+                        info!("Unknown pair: {:?} {:?}", first, second);
                         warn!("Can not process it");
                     }
                 }
 
-                vector_info_pull.clear();
+                vector_pull.clear();
             }
 
-            if vector_info_pull.len() == 1 {
+            if vector_pull.len() == 1 {
 
-                match vector_info_pull.front().unwrap() {
-                    VectorInfo::OpCode0502(begin) => {
-                        if begin.xid.sequence_number != 0 { // else INTERNAL
-                            self.builder_ptr.process_begin(record.scn, record.timestamp, begin.xid)?;
-                        }
-                        
-                        vector_info_pull.clear();
+                let first = vector_pull.pop_front().unwrap();
+
+                match first.kind() {
+                    VectorKind::OpCode0502 => {
+                        self.push_to_transaction_begin(record, first)?;
                     },
-                    VectorInfo::OpCode0504(commit) => {
-                        let is_rollback = commit.flg & constants::FLAG_KTUCF_ROLLBACK != 0;
-                        self.builder_ptr.process_commit(record.scn, record.timestamp, commit.xid, is_rollback)?;
-                        vector_info_pull.clear();
+                    VectorKind::OpCode0504 => {
+                        self.push_to_transaction_commit(first)?;
                     },
                     _ => (),
                 }
 
             }
+            
         }
 
-        vector_info_pull.clear();
+        vector_pull.clear();
         Ok(())
     }
 }
