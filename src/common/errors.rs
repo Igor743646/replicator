@@ -42,6 +42,7 @@ pub struct OracleLogicalReplicatorError {
 }
 
 pub type OLRError = OracleLogicalReplicatorError;
+pub type Result<T> = std::result::Result<T, OLRError>;
 
 impl OLRError {
     pub fn new(source : &'static str, line : u32, code : OLRErrorCode, message : String) -> Self {
@@ -56,8 +57,8 @@ impl OLRError {
     }
 }
 
-impl<T> Into<Result<T, OLRError>> for OLRError {
-    fn into(self) -> Result<T, OLRError> {
+impl<T> Into<Result<T>> for OLRError {
+    fn into(self) -> Result<T> {
         Err(self)
     }
 }

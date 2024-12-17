@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::{Arc, Mutex, MutexGuard}};
 
 use log::{debug, warn};
 
-use crate::{common::{errors::OLRError, types::{TypeConId, TypeScn, TypeSeq}}, ctx::Ctx, locales::Locales, oradefs::{db_object::DataBaseObject, oracle_schema::{OracleSchema, OracleSchemaResource}}};
+use crate::{common::{errors::Result, types::{TypeConId, TypeScn, TypeSeq}}, ctx::Ctx, locales::Locales, oradefs::{db_object::DataBaseObject, oracle_schema::{OracleSchema, OracleSchemaResource}}};
 
 #[derive(Debug)]
 pub struct Metadata {
@@ -59,7 +59,7 @@ impl Metadata {
         guard.insert(user);
     }
 
-    pub fn set_schema_resource(&self, resource : OracleSchemaResource) -> Result<(), OLRError> {
+    pub fn set_schema_resource(&self, resource : OracleSchemaResource) -> Result<()> {
         let mut guard = self.schema.lock().unwrap();
         guard.set_resource(resource);
         Ok(())

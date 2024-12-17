@@ -1,4 +1,4 @@
-use crate::{common::{constants, errors::OLRError}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{constants, errors::Result}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 use super::VectorField;
 
@@ -12,7 +12,7 @@ pub struct Ktub {
 }
 
 impl VectorField for Ktub {
-    fn parse_from_reader(parser : &mut Parser, _vec_reader : &mut VectorReader, reader : &mut ByteReader, field_num : usize) -> Result<Self, OLRError> {
+    fn parse_from_reader(parser : &mut Parser, _vec_reader : &mut VectorReader, reader : &mut ByteReader, field_num : usize) -> Result<Self> {
         assert!(reader.data().len() >= 24, "Size of field {} < 24", reader.data().len());
 
         let obj        = reader.read_u32()?;

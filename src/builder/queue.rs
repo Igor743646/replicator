@@ -1,5 +1,5 @@
 use std::{collections::VecDeque, fmt::Display, sync::Arc};
-use crate::{common::{errors::OLRError, memory_pool::MemoryChunk}, ctx::Ctx};
+use crate::{common::{errors::Result, memory_pool::MemoryChunk}, ctx::Ctx};
 use log::debug;
 
 #[derive(Debug)]
@@ -50,7 +50,7 @@ impl Drop for BuilderQueue {
 }
 
 impl BuilderQueue {
-    pub fn new(context_ptr : Arc<Ctx>) -> Result<Self, OLRError> {
+    pub fn new(context_ptr : Arc<Ctx>) -> Result<Self> {
         debug!("Initialize BuilderQueue");
         
         let chunk: MemoryChunk = context_ptr.get_chunk()?;

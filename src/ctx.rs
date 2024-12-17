@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use crossbeam::channel::{Receiver, Sender};
 use log::debug;
 
-use crate::{common::{errors::OLRError, memory_pool::{MemoryChunk, MemoryPool}}, parser::fs_reader::ReaderMessage};
+use crate::{common::{errors::Result, memory_pool::{MemoryChunk, MemoryPool}}, parser::fs_reader::ReaderMessage};
 
 #[derive(Debug, Default, Clone)]
 pub struct Dump {
@@ -33,7 +33,7 @@ pub struct Ctx {
 impl Ctx {
     pub fn new(dump : Dump, log_level : u64, trace : u64, flags : u64, disable_checks : u64, 
         checkpoint_interval_s : u64, checkpoint_interval_mb : u64, checkpoint_keep : u64,
-        schema_force_interval : u64, memory_min_mb: usize , memory_max_mb: usize, read_buffer_max: usize) -> Result<Self, OLRError> {
+        schema_force_interval : u64, memory_min_mb: usize , memory_max_mb: usize, read_buffer_max: usize) -> Result<Self> {
         debug!("Initialize Ctx");
         
         Ok(Self {
@@ -44,7 +44,7 @@ impl Ctx {
         })
     }
     
-    pub fn get_chunk(&self) -> Result<MemoryChunk, OLRError> {
+    pub fn get_chunk(&self) -> Result<MemoryChunk> {
         let mut guard = self.memory_manager.lock().unwrap();
         guard.get_chunk()
     }

@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, ptr, sync::Arc};
 
-use crate::{common::{constants, errors::{OLRError, OLRErrorCode::*}, memory_pool::MemoryChunk, types::{TypeRecordScn, TypeTimestamp}}, ctx::Ctx, olr_err};
+use crate::{common::{constants, errors::{Result, OLRErrorCode::*}, memory_pool::MemoryChunk, types::{TypeRecordScn, TypeTimestamp}}, ctx::Ctx, olr_err};
 
 use super::{byte_reader::ByteReader, byte_writer::ByteWriter};
 
@@ -65,7 +65,7 @@ impl RecordsManager {
         self.records.len()
     }
 
-    fn allocate_chunk(&mut self) -> Result<(), OLRError> {
+    fn allocate_chunk(&mut self) -> Result<()> {
         let chunk = self.context_ptr.get_chunk()?;
         self.chunks.push_back(chunk);
         Ok(())
@@ -88,7 +88,7 @@ impl RecordsManager {
         (next_size + 7) & !7
     }
 
-    pub fn reserve_record(&mut self, record_size : usize) -> Result<&'static mut Record, OLRError> {
+    pub fn reserve_record(&mut self, record_size : usize) -> Result<&'static mut Record> {
         let mut last_chunk = self.chunks.back_mut().unwrap();
         let mut chunk_size = Self::get_chunk_size(&last_chunk);
 

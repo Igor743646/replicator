@@ -1,5 +1,5 @@
 use super::{fields::{kdoopcode::Kdoopcode, ktbredo::Ktbredo, VectorField}, VectorData, VectorParser};
-use crate::{common::{errors::OLRError, types::{TypeFb, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{errors::Result, types::{TypeFb, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
 pub struct OpCode1102<'a> {
@@ -22,7 +22,7 @@ pub struct OpCode1102<'a> {
 }
 
 impl<'a> OpCode1102<'a> {
-    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self, OLRError> {
+    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self> {
         let mut res = Self {
             xid : Default::default(),
             fb : Default::default(),
@@ -41,7 +41,7 @@ impl<'a> OpCode1102<'a> {
         Ok(res)
     }
 
-    fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
+    fn init(&mut self, parser : &mut Parser) -> Result<()> {
 
         match self.reader.next() {
             Some(mut field_reader) => self.ktbredo(parser, &mut field_reader, 0),
@@ -82,13 +82,13 @@ impl<'a> OpCode1102<'a> {
         Ok(())
     }
 
-    fn ktbredo(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn ktbredo(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         let ktbredo = Ktbredo::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         if let Some(xid) = ktbredo.xid { self.xid = xid; } 
         Ok(())
     }
 
-    fn kdo_opcode(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn kdo_opcode(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         let kdoopcode = Kdoopcode::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         self.bdba = kdoopcode.bdba;
         self.op = kdoopcode.op;
@@ -116,7 +116,7 @@ impl<'a> OpCode1102<'a> {
 }
 
 impl<'a> VectorParser<'a> for OpCode1102<'a> {
-    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>, OLRError> {
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>> {
         Ok(
             VectorData::OpCode1102(
                 OpCode1102::new(parser, reader)?

@@ -5,7 +5,7 @@ use formats::BuilderFormats;
 use queue::BuilderQueue;
 use serde_json::json;
 
-use crate::{common::{errors::OLRError, types::{TypeRecordScn, TypeTimestamp, TypeXid}}, ctx::Ctx, locales::Locales, metadata::Metadata, parser::opcodes::{opcode0501::OpCode0501, opcode1102::OpCode1102}};
+use crate::{common::{errors::Result, types::{TypeRecordScn, TypeTimestamp, TypeXid}}, ctx::Ctx, locales::Locales, metadata::Metadata, parser::opcodes::{opcode0501::OpCode0501, opcode1102::OpCode1102}};
 
 pub mod formats;
 pub mod queue;
@@ -23,7 +23,7 @@ impl JsonBuilder {
     pub fn new(context_ptr : Arc<Ctx>, locales_ptr : Arc<Locales>, metadata_ptr : Arc<Metadata>, 
                 db_format : u8, attributes_format : u8, interval_dts_format : u8, interval_ytm_format : u8, message_format : u8, 
                 rid_format : u8, xid_format : u8, timestamp_format : u8, timestamp_tz_format : u8, timestamp_all : u8, char_format : u8,
-                scn_format : u8, scn_all : u8, unknown_format : u8, schema_format : u8, column_format : u8, unknown_type : u8) -> Result<Self, OLRError> {
+                scn_format : u8, scn_all : u8, unknown_format : u8, schema_format : u8, column_format : u8, unknown_type : u8) -> Result<Self> {
         debug!("Initialize JsonBuilder");
         let _ = OpenOptions::new().write(true).create(true).truncate(true).open("out.txt").unwrap(); // Убрать
         Ok(Self {
@@ -51,7 +51,7 @@ impl JsonBuilder {
         })
     }
 
-    pub fn process_insert(&self, scn : TypeRecordScn, timestamp : TypeTimestamp, undo : OpCode0501, mut redo : OpCode1102) -> Result<(), OLRError> {
+    pub fn process_insert(&self, scn : TypeRecordScn, timestamp : TypeTimestamp, undo : OpCode0501, mut redo : OpCode1102) -> Result<()> {
 
         let mut schema = self.metadata_ptr.get_schema();
 
@@ -104,7 +104,7 @@ impl JsonBuilder {
         Ok(())
     }
 
-    pub fn process_begin(&self, scn : TypeRecordScn, timestamp : TypeTimestamp, xid : TypeXid) -> Result<(), OLRError> {
+    pub fn process_begin(&self, scn : TypeRecordScn, timestamp : TypeTimestamp, xid : TypeXid) -> Result<()> {
         let mut guard = self.queue.lock().unwrap();
         
         let mut output_file = OpenOptions::new().write(true).append(true).open("out.txt").unwrap();
@@ -122,7 +122,7 @@ impl JsonBuilder {
         Ok(())
     }
 
-    pub fn process_commit(&self, scn : TypeRecordScn, timestamp : TypeTimestamp, xid : TypeXid, is_rollback : bool) -> Result<(), OLRError> {
+    pub fn process_commit(&self, scn : TypeRecordScn, timestamp : TypeTimestamp, xid : TypeXid, is_rollback : bool) -> Result<()> {
         let mut guard = self.queue.lock().unwrap();
         
         let mut output_file = OpenOptions::new().write(true).append(true).open("out.txt").unwrap();

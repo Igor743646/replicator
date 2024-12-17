@@ -2,37 +2,28 @@ use core::fmt;
 use std::collections::VecDeque;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::Write;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Instant;
 use std::path::PathBuf;
 
-use clap::error::Result;
 use crossbeam::channel::Receiver;
 use log::{info, trace, warn};
 
 use crate::builder::JsonBuilder;
-use crate::common::constants;
 use crate::common::thread::spawn;
 use crate::common::types::TypeTimestamp;
 use crate::ctx::Ctx;
 use crate::olr_perr;
 use crate::parser::archive_structs::record_header::RecordHeader;
-use crate::parser::archive_structs::vector_header::VectorHeader;
 use crate::parser::fs_reader::{Reader, ReaderMessage};
-use crate::parser::opcodes::opcode0501::OpCode0501;
-use crate::parser::opcodes::opcode0502::OpCode0502;
-use crate::parser::opcodes::opcode0504::OpCode0504;
-use crate::parser::opcodes::opcode0520::OpCode0520;
-use crate::parser::opcodes::opcode1102::OpCode1102;
-use crate::parser::opcodes::{Vector, VectorData, VectorKind, VectorParser};
+use crate::parser::opcodes::{Vector, VectorKind};
 use crate::parser::record_analizer::RecordAnalizer;
-use crate::parser::record_reader::VectorReader;
 use crate::parser::records_manager::Record;
 use crate::transactions::transaction_buffer::TransactionBuffer;
-use crate::{common::{errors::OLRError, types::TypeSeq}, olr_err};
+use crate::{common::types::TypeSeq, olr_err};
 use crate::common::errors::OLRErrorCode::*;
+use crate::common::errors::Result;
 
 use super::archive_structs::redolog_header::RedoLogHeader;
 use super::byte_reader::{self, ByteReader};
@@ -90,7 +81,7 @@ struct ParserState<'a> {
 }
 
 impl Parser {
-    pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, transaction_buffer : Arc<Mutex<TransactionBuffer>>, file_path : PathBuf, sequence : TypeSeq) -> Result<Self, OLRError> {
+    pub fn new(context_ptr : Arc<Ctx>, builder_ptr : Arc<JsonBuilder>, transaction_buffer : Arc<Mutex<TransactionBuffer>>, file_path : PathBuf, sequence : TypeSeq) -> Result<Self> {
         let mut result = Self {
             context_ptr: context_ptr.clone(), 
             builder_ptr,
@@ -124,7 +115,7 @@ impl Parser {
         level <= self.context_ptr.dump.level
     }
 
-    pub fn write_dump(&mut self, fmt: fmt::Arguments<'_>) -> Result<(), OLRError> {
+    pub fn write_dump(&mut self, fmt: fmt::Arguments<'_>) -> Result<()> {
         if let Some(ref mut file) = self.dump_file {
             if let Err(err) = file.write_fmt(fmt) {
                 return olr_err!(FileWriting, "Can not write dump in file. Error: {}", err);
@@ -133,7 +124,7 @@ impl Parser {
         Ok(())
     }
 
-    pub fn dump_column(&mut self, bytes : &[u8], col_num : usize, col_len : usize, is_null : bool) -> Result<(), OLRError> {
+    pub fn dump_column(&mut self, bytes : &[u8], col_num : usize, col_len : usize, is_null : bool) -> Result<()> {
         if is_null {
             self.write_dump(format_args!("Col {:>3} [{}]: NULL\n", col_num, col_len))?;
         } else {
@@ -150,7 +141,7 @@ impl Parser {
         self.version
     }
 
-    fn start_reader(&self) -> Result<(Receiver<ReaderMessage>, JoinHandle<Result<(), OLRError>>), OLRError> {
+    fn start_reader(&self) -> Result<(Receiver<ReaderMessage>, JoinHandle<Result<()>>)> {
         let (sx, rx) = self.context_ptr.get_reader_channel();
         let fs_reader = Reader::new(self.context_ptr.clone(), self.file_path.clone(), sx);
         let handle = spawn(fs_reader)?;
@@ -158,7 +149,7 @@ impl Parser {
         Ok(result)
     }
 
-    pub fn parse(&mut self) -> Result<(), OLRError> {
+    pub fn parse(&mut self) -> Result<()> {
 
         let start_parsing_time = Instant::now();
         let (rx, fs_reader_handle) = self.start_reader()?;
@@ -212,7 +203,7 @@ impl Parser {
         Ok(())
     }
 
-    fn process_block(&mut self, state : &mut ParserState, phisical_block : &[u8]) -> Result<(), OLRError> {
+    fn process_block(&mut self, state : &mut ParserState, phisical_block : &[u8]) -> Result<()> {
         if state.start_block == 0 {
             self.check_file_header(&phisical_block)?;
             state.start_block += 1;
@@ -309,7 +300,7 @@ impl Parser {
         Ok(())
     }
 
-    fn check_file_header(&self, buffer : &[u8]) -> Result<(), OLRError> {
+    fn check_file_header(&self, buffer : &[u8]) -> Result<()> {
         assert!(self.block_size.is_some());
         assert!(self.endian.is_some());
 
@@ -346,7 +337,7 @@ impl Parser {
         Ok(())
     }
 
-    fn get_redo_log_header(&self, read_buffer : &[u8]) -> Result<RedoLogHeader, OLRError> {
+    fn get_redo_log_header(&self, read_buffer : &[u8]) -> Result<RedoLogHeader> {
         // Validate block by its checksum
         self.validate_block(read_buffer)?;
 
@@ -414,7 +405,7 @@ impl Parser {
         Ok(redo_log_header)
     }
 
-    fn validate_block(&self, read_buffer : &[u8]) -> Result<(), OLRError> {
+    fn validate_block(&self, read_buffer : &[u8]) -> Result<()> {
         let checksum = self.block_checksum(read_buffer);
         if checksum != 0 {
             let mut reader = ByteReader::from_bytes(read_buffer);
@@ -445,7 +436,7 @@ impl Parser {
         (checksum & 0xFFFF) as u16
     }
 
-    fn push_to_transaction_begin(&mut self, record : &Record, begin : Vector) -> Result<(), OLRError> {
+    fn push_to_transaction_begin(&mut self, record : &Record, begin : Vector) -> Result<()> {
         let xid = begin.xid().unwrap();
 
         if xid.sequence_number == 0 { // INTERNAL
@@ -460,7 +451,7 @@ impl Parser {
         Ok(())
     }
 
-    fn push_to_transaction_double(&mut self, vector1 : Vector, vector2 : Vector) -> Result<(), OLRError> {
+    fn push_to_transaction_double(&mut self, vector1 : Vector, vector2 : Vector) -> Result<()> {
         let mut guard: std::sync::MutexGuard<'_, TransactionBuffer> = self.transaction_buffer.lock().unwrap();
         let xid = vector1.xid().expect("vector1 must be an opcode with xid");
         
@@ -468,7 +459,7 @@ impl Parser {
         Ok(())
     }
 
-    fn push_to_transaction_commit(&mut self, commit : Vector) -> Result<(), OLRError> {
+    fn push_to_transaction_commit(&mut self, commit : Vector) -> Result<()> {
         let mut guard = self.transaction_buffer.lock().unwrap();
         // guard.close_transaction(commit.xid)?;
 
@@ -480,7 +471,7 @@ impl Parser {
 
 
 impl RecordAnalizer for Parser {
-    fn analize_record(&mut self, record : &Record) -> Result<(), OLRError> {
+    fn analize_record(&mut self, record : &Record) -> Result<()> {
         
         trace!("Analize record: block: {} offset: {} scn: {} subscn: {}", record.block, record.offset, record.scn, record.sub_scn);
 

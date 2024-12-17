@@ -7,7 +7,7 @@ use opcode0504::OpCode0504;
 use opcode0520::OpCode0520;
 use opcode1102::OpCode1102;
 
-use crate::common::{errors::OLRError, types::TypeXid};
+use crate::common::{errors::Result, types::TypeXid};
 
 use super::{archive_structs::vector_header::VectorHeader, byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader};
 pub mod fields;
@@ -24,7 +24,7 @@ pub struct Vector<'a> {
 }
 
 impl<'a> Vector<'a> {
-    pub fn parse(parser : &mut Parser, reader : &mut ByteReader<'a>, version : u32) -> Result<Self, OLRError> {
+    pub fn parse(parser : &mut Parser, reader : &mut ByteReader<'a>, version : u32) -> Result<Self> {
         let header: VectorHeader = reader.read_redo_vector_header(version)?;
         trace!("Analize vector: {:?} offset: {}", header.op_code, reader.cursor());
         reader.align_up(4);
@@ -139,5 +139,5 @@ impl<'a> Display for VectorData<'a> {
 }
 
 pub trait VectorParser<'a> {
-    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>, OLRError>;
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>>;
 }

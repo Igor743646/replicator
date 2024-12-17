@@ -1,5 +1,5 @@
 use super::{fields::{kdoopcode::Kdoopcode, ktbredo::Ktbredo, ktub::Ktub, ktudb::Ktudb, VectorField}, VectorData, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::{TypeFb, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{constants, errors::Result, types::{TypeFb, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
 pub struct OpCode0501<'a> {
@@ -28,7 +28,7 @@ pub struct OpCode0501<'a> {
 }
 
 impl<'a> OpCode0501<'a> {
-    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self, OLRError> {
+    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self> {
         let mut res = Self {
             xid : Default::default(),
             obj : Default::default(),
@@ -52,7 +52,7 @@ impl<'a> OpCode0501<'a> {
         Ok(res)
     }
 
-    fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
+    fn init(&mut self, parser : &mut Parser) -> Result<()> {
         
         match self.reader.next() {
             Some(ref mut field_reader) => self.ktudb(parser, field_reader, 0),
@@ -93,13 +93,13 @@ impl<'a> OpCode0501<'a> {
         Ok(())
     }
 
-    fn ktudb(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn ktudb(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         let ktudb = Ktudb::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         self.xid = ktudb.xid;
         Ok(())
     }
 
-    fn ktub(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn ktub(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         let ktub = Ktub::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         self.obj = ktub.obj;
         self.data_obj = ktub.data_obj;
@@ -109,7 +109,7 @@ impl<'a> OpCode0501<'a> {
         Ok(())
     }
 
-    fn ktbredo(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn ktbredo(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         let ktbredo = Ktbredo::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         if let Some(xid) = ktbredo.xid {
             self.xid = xid;
@@ -117,7 +117,7 @@ impl<'a> OpCode0501<'a> {
         Ok(())
     }
 
-    fn kdoopcode(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn kdoopcode(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         let kdoopcode = Kdoopcode::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         self.bdba = kdoopcode.bdba;
         self.op = kdoopcode.op;
@@ -134,7 +134,7 @@ impl<'a> OpCode0501<'a> {
         Ok(())
     }
 
-    fn supp_log(&mut self, parser : &mut Parser, mut field_num : usize) -> Result<(), OLRError> {
+    fn supp_log(&mut self, parser : &mut Parser, mut field_num : usize) -> Result<()> {
         field_num = field_num + self.reader.skip_empty() + 1;
 
         let supplog_cc;
@@ -206,7 +206,7 @@ impl<'a> OpCode0501<'a> {
         Ok(())
     }
 
-    fn kdilk(&mut self, parser : &mut Parser, reader : &mut ByteReader, _field_num : usize) -> Result<(), OLRError> {
+    fn kdilk(&mut self, parser : &mut Parser, reader : &mut ByteReader, _field_num : usize) -> Result<()> {
         assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
 
         // if parser.can_dump(1) {
@@ -216,7 +216,7 @@ impl<'a> OpCode0501<'a> {
         Ok(())
     }
 
-    fn opc0a16(&mut self, parser : &mut Parser, field_num : usize) -> Result<(), OLRError> {
+    fn opc0a16(&mut self, parser : &mut Parser, field_num : usize) -> Result<()> {
         if let Some(mut field_reader) = self.reader.next()  {
             self.kdilk(parser, &mut field_reader, field_num)?;
         } else {
@@ -226,7 +226,7 @@ impl<'a> OpCode0501<'a> {
         Ok(())
     }
 
-    fn opc0b01(&mut self, parser : &mut Parser, field_num : usize) -> Result<(), OLRError> {
+    fn opc0b01(&mut self, parser : &mut Parser, field_num : usize) -> Result<()> {
 
         let mut ktb_opcode_reader = self.reader.next()
                 .ok_or(olr_perr!("Expected ktb opcode field"))?;
@@ -344,7 +344,7 @@ impl<'a> OpCode0501<'a> {
 }
 
 impl<'a> VectorParser<'a> for OpCode0501<'a> {
-    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>, OLRError> {
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>> {
         Ok(
             VectorData::OpCode0501(
                 OpCode0501::new(parser, reader)?

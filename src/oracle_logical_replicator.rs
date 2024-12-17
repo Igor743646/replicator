@@ -6,7 +6,7 @@ use log::info;
 
 use crate::builder;
 use crate::common::constants;
-use crate::common::errors::{OLRError, OLRErrorCode::*};
+use crate::common::errors::{Result, OLRErrorCode::*};
 use crate::common::thread::spawn;
 use crate::common::types;
 use crate::common::types::TypeScn;
@@ -29,7 +29,7 @@ impl OracleLogicalReplicator {
         Self {config_filename : config}
     }
 
-    fn check_config_fields<const T : usize>(&self, config_value : &serde_json::Value, fields : [&str; T]) -> Result<(), OLRError> {
+    fn check_config_fields<const T : usize>(&self, config_value : &serde_json::Value, fields : [&str; T]) -> Result<()> {
         if let Some(map) = config_value.as_object() {
             for (child, _) in map {
                 // TODO: Can do binary search for fields
@@ -44,7 +44,7 @@ impl OracleLogicalReplicator {
         Ok(())
     }
 
-    fn get_json_field_a<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<&'a Vec<serde_json::Value>>, OLRError> {
+    fn get_json_field_a<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<&'a Vec<serde_json::Value>>> {
         match value.get(name) {
             Some(val) if val.is_array() => Ok(Some(val.as_array().unwrap())),
             Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not an array", name),
@@ -52,7 +52,7 @@ impl OracleLogicalReplicator {
         }
     }
 
-    fn get_json_field_o<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<&'a serde_json::Value>, OLRError> {
+    fn get_json_field_o<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<&'a serde_json::Value>> {
         match value.get(name) {
             Some(val) if val.is_object() => Ok(Some(val)),
             Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not an object", name),
@@ -60,7 +60,7 @@ impl OracleLogicalReplicator {
         }
     }
 
-    fn get_json_field_s<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<String>, OLRError> {
+    fn get_json_field_s<'a>(&self, value : &'a serde_json::Value, name : &str) -> Result<Option<String>> {
         match value.get(name) {
             Some(val) if val.is_string() => Ok(Some(val.as_str().unwrap().to_string())),
             Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not a string", name),
@@ -68,7 +68,7 @@ impl OracleLogicalReplicator {
         }
     }
 
-    fn get_json_field_i64(&self, value : &serde_json::Value, name : &str) -> Result<Option<i64>, OLRError> {
+    fn get_json_field_i64(&self, value : &serde_json::Value, name : &str) -> Result<Option<i64>> {
         match value.get(name) {
             Some(val) if val.is_i64() => Ok(Some(val.as_i64().unwrap())),
             Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not a i64", name),
@@ -76,7 +76,7 @@ impl OracleLogicalReplicator {
         }
     }
 
-    fn get_json_field_u64(&self, value : &serde_json::Value, name : &str) -> Result<Option<u64>, OLRError> {
+    fn get_json_field_u64(&self, value : &serde_json::Value, name : &str) -> Result<Option<u64>> {
         match value.get(name) {
             Some(val) if val.is_u64() => Ok(Some(val.as_u64().unwrap())),
             Some(_) => olr_err!(WrongConfigFieldType, "Field '{}' not a u64", name),
@@ -84,7 +84,7 @@ impl OracleLogicalReplicator {
         }
     }
 
-    pub fn run(&self) -> Result<(), OLRError> {
+    pub fn run(&self) -> Result<()> {
         let locales_ptr = Arc::new(Locales::new());
         
         let mut handle_vector = Vec::new();
@@ -448,7 +448,7 @@ impl OracleLogicalReplicator {
         Ok(())
     }
 
-    fn mapping_configuration(&self, reader_json : &serde_json::Value) -> Result<Box<dyn Fn(PathBuf) -> PathBuf>, OLRError> {
+    fn mapping_configuration(&self, reader_json : &serde_json::Value) -> Result<Box<dyn Fn(PathBuf) -> PathBuf>> {
         let mut hash_map = HashMap::<PathBuf, PathBuf>::new();
         if let Some(mapping_array) = self.get_json_field_a(&reader_json, "path-mapping")? {
             if (mapping_array.len() % 2) != 0 {

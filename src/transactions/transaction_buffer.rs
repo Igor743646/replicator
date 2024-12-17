@@ -1,6 +1,6 @@
 use std::{collections::{hash_map::Entry, HashMap}, sync::{Arc, Mutex, MutexGuard}};
 
-use crate::{common::{errors::OLRError, types::{TypeScn, TypeTimestamp, TypeXid}}, ctx::Ctx, olr_err, parser::opcodes::{Vector, VectorData}};
+use crate::{common::{errors::Result, types::{TypeScn, TypeTimestamp, TypeXid}}, ctx::Ctx, olr_err, parser::opcodes::{Vector, VectorData}};
 use crate::common::errors::OLRErrorCode::*;
 
 use super::transaction::Transaction;
@@ -19,7 +19,7 @@ impl TransactionBuffer {
         }
     }
 
-    pub fn find_transaction(&mut self, xid : TypeXid, can_add : bool) -> Result<Option<&mut Transaction>, OLRError> {
+    pub fn find_transaction(&mut self, xid : TypeXid, can_add : bool) -> Result<Option<&mut Transaction>> {
         let entry = self.transactions.entry(xid);
 
         let result = match entry {
@@ -38,7 +38,7 @@ impl TransactionBuffer {
         Ok(result)
     }
 
-    pub fn add_double_in_transaction(&mut self, xid : TypeXid, v1 : Vector, v2 : Vector) -> Result<(), OLRError> {
+    pub fn add_double_in_transaction(&mut self, xid : TypeXid, v1 : Vector, v2 : Vector) -> Result<()> {
         let transaction = self.find_transaction(xid, true)?.unwrap();
 
         // let added_size = 

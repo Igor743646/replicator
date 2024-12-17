@@ -1,7 +1,7 @@
 use std::{cmp::Reverse, sync::{Arc, Mutex}};
 use log::{debug, info, warn};
 
-use crate::{builder::JsonBuilder, common::{errors::OLRError, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err, oradefs::oracle_schema::OracleSchemaResource, transactions::transaction_buffer::TransactionBuffer};
+use crate::{builder::JsonBuilder, common::{errors::Result, thread::Thread}, ctx::Ctx, metadata::Metadata, olr_err, oradefs::oracle_schema::OracleSchemaResource, transactions::transaction_buffer::TransactionBuffer};
 
 use super::archive_digger::ArchiveDigger;
 use crate::common::OLRErrorCode::*;
@@ -39,7 +39,7 @@ impl OnlineReplicator {
 }
 
 impl Thread for OnlineReplicator {
-    fn run(&self) -> Result<(), OLRError> {
+    fn run(&self) -> Result<()> {
         info!("Run Replicator");
 
         let conn = oracle::Connection::connect(&self.user, &self.password, &self.server)

@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, sync::{Arc, Mutex, MutexGuard}};
 
-use crate::{common::{errors::OLRError, types::{TypeRecordScn, TypeScn, TypeTimestamp, TypeXid}}, parser::opcodes::VectorData};
+use crate::{common::{errors::Result, types::{TypeRecordScn, TypeScn, TypeTimestamp, TypeXid}}, parser::opcodes::VectorData};
 
 use super::transaction_buffer::TransactionBuffer;
 
@@ -31,7 +31,7 @@ impl Transaction {
         self.timestamp = Some(timestamp)
     }
 
-    pub fn add_double(&mut self, buffer : &mut MutexGuard<'_, TransactionBuffer>, vector1 : VectorData, vector2 : VectorData) -> Result<(), OLRError> {
+    pub fn add_double(&mut self, buffer : &mut MutexGuard<'_, TransactionBuffer>, vector1 : VectorData, vector2 : VectorData) -> Result<()> {
         Ok(())
     }
 }

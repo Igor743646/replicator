@@ -9,11 +9,11 @@ use crate::builder::JsonBuilder;
 use crate::common::types::TypeSeq;
 use crate::ctx::Ctx;
 use crate::transactions::transaction_buffer::TransactionBuffer;
-use crate::{common::errors::OLRError, olr_err, parser::parser_impl::Parser};
+use crate::{common::errors::Result, olr_err, parser::parser_impl::Parser};
 use crate::common::OLRErrorCode::*;
 
 pub trait ArchiveDigger where Self: Send + Sync + Debug {
-    fn get_parsers_queue(&self, transaction_buffer : Arc<Mutex<TransactionBuffer>>) -> Result<BinaryHeap<Reverse<Parser>>, OLRError>;
+    fn get_parsers_queue(&self, transaction_buffer : Arc<Mutex<TransactionBuffer>>) -> Result<BinaryHeap<Reverse<Parser>>>;
     fn get_sequence_from_file(&self, log_archive_format : &String, file : &PathBuf) -> Option<u32>;
 }
 
@@ -52,7 +52,7 @@ impl ArchiveDiggerOffline {
 }
 
 impl ArchiveDigger for ArchiveDiggerOffline {
-    fn get_parsers_queue(&self, transaction_buffer : Arc<Mutex<TransactionBuffer>>) -> Result<BinaryHeap<Reverse<Parser>>, OLRError> {
+    fn get_parsers_queue(&self, transaction_buffer : Arc<Mutex<TransactionBuffer>>) -> Result<BinaryHeap<Reverse<Parser>>> {
         if self.archive_log_format.is_empty() {
             return olr_err!(MissingFile, "Missing location of archived redo logs. Archive log format is empty.");
         }

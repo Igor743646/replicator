@@ -2,7 +2,7 @@ use std::{alloc::{alloc, dealloc, Layout}, collections::VecDeque, fmt::{Display,
 use log::{debug, warn};
 use crate::common::OLRErrorCode::*;
 use crate::olr_err;
-use super::{constants, errors::OLRError};
+use super::{constants, errors::Result};
 
 #[derive(Debug)]
 pub struct MemoryChunk(NonNull<[u8]>);
@@ -21,7 +21,7 @@ impl MemoryChunk {
     pub const MEMORY_ALIGNMENT : usize = constants::MEMORY_ALIGNMENT as usize;
     pub const MEMORY_LAYOUT : Layout = unsafe {Layout::from_size_align_unchecked(Self::MEMORY_CHUNK_SIZE, Self::MEMORY_ALIGNMENT)};
 
-    pub fn new() -> Result<Self, OLRError> {
+    pub fn new() -> Result<Self> {
         let data_ptr : NonNull<[u8]>;
 
         unsafe {
@@ -100,7 +100,7 @@ pub struct MemoryPool {
 }
 
 impl MemoryPool {
-    pub fn new(memory_min_mb : usize, memory_max_mb : usize, read_buffer_max : usize) -> Result<Self, OLRError> {
+    pub fn new(memory_min_mb : usize, memory_max_mb : usize, read_buffer_max : usize) -> Result<Self> {
         debug!("Initialize MemoryPool");
 
         let mut memory_chunks = VecDeque::with_capacity((memory_min_mb / constants::MEMORY_CHUNK_SIZE_MB) as usize);
@@ -127,7 +127,7 @@ impl MemoryPool {
         self.read_buffer_max
     }
 
-    pub fn get_chunk(&mut self) -> Result<MemoryChunk, OLRError> {
+    pub fn get_chunk(&mut self) -> Result<MemoryChunk> {
         if self.memory_chunks_allocated >= self.memory_chunks_max {
             warn!("Memory limit exceeded. The maximum amount of memory available for allocation: {}Mb. Now: {}Mb. Try allocate over limit", self.memory_chunks_max, self.memory_chunks_allocated);
         }

@@ -7,7 +7,7 @@ use charset::CharacterMapper;
 use charset_7bit::CharSet7Bit;
 use log::debug;
 
-use crate::{common::errors::OLRError, olr_err};
+use crate::{common::errors::Result, olr_err};
 use crate::common::OLRErrorCode::*;
 
 #[derive(Default)]
@@ -28,7 +28,7 @@ impl Locales {
         Self::default()
     }
 
-    pub fn get_char_set(charset_id : u64) -> Result<Box<dyn CharacterMapper>, OLRError> {
+    pub fn get_char_set(charset_id : u64) -> Result<Box<dyn CharacterMapper>> {
         match charset_id {
             // 7-bit charsets
             1 => Ok(Box::new(CharSet7Bit::new("US7ASCII", charset_7bit::UNICODE_MAP_US7ASCII))),

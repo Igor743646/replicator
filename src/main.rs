@@ -16,7 +16,7 @@ mod oradefs;
 mod builder;
 mod parser;
 mod replicators;
-use common::errors::OLRError;
+use common::errors::Result;
 use common::OLRErrorCode::*;
 
 #[derive(Parser, Debug)]
@@ -26,7 +26,7 @@ struct ReplicatorArgs {
     file: String
 }
 
-fn start(args : ReplicatorArgs) -> Result<(), OLRError> {
+fn start(args : ReplicatorArgs) -> Result<()> {
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
     info!("OS: {}; Arch: {}; Family: {}", std::env::consts::OS, std::env::consts::ARCH, std::env::consts::FAMILY);
 
@@ -94,7 +94,7 @@ fn main() {
 
     let args: ReplicatorArgs = ReplicatorArgs::parse();
 
-    let res: Result<(), OLRError> = start(args);
+    let res: Result<()> = start(args);
 
     match res {
         Ok(_) => {

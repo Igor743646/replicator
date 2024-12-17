@@ -1,4 +1,4 @@
-use crate::{common::{errors::OLRError, types::TypeXid}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{errors::Result, types::TypeXid}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 use super::VectorField;
 
@@ -9,7 +9,7 @@ pub struct Ktucm {
 }
 
 impl VectorField for Ktucm {
-    fn parse_from_reader(parser : &mut Parser, vec_reader : &mut VectorReader, reader : &mut ByteReader, field_num : usize) -> Result<Self, OLRError> {
+    fn parse_from_reader(parser : &mut Parser, vec_reader : &mut VectorReader, reader : &mut ByteReader, field_num : usize) -> Result<Self> {
         assert!(reader.data().len() == 20, "Size of field {} != 20", reader.data().len());
 
         let xid_usn = (vec_reader.header.class - 15) / 2;

@@ -1,5 +1,5 @@
 use super::{fields::{kteop::Kteop, ktudh::Ktudh, pdb::Pdb, VectorField}, VectorData, VectorParser};
-use crate::{common::{constants, errors::OLRError, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{constants, errors::Result, types::TypeXid}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
 pub struct OpCode0502<'a> {
@@ -10,7 +10,7 @@ pub struct OpCode0502<'a> {
 }
 
 impl<'a> OpCode0502<'a> {
-    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self, OLRError> {
+    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self> {
         let mut res = Self {
             xid : Default::default(),
             flg : Default::default(),
@@ -20,7 +20,7 @@ impl<'a> OpCode0502<'a> {
         Ok(res)
     }
 
-    fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
+    fn init(&mut self, parser : &mut Parser) -> Result<()> {
         if self.reader.header.fields_count > 3 {
             return olr_perr!("Opcode: 5.2 Count of field > 3. Dump: {}", self.reader.by_ref().map(|x| {x.to_hex_dump()}).collect::<String>());
         }
@@ -47,26 +47,26 @@ impl<'a> OpCode0502<'a> {
         Ok(())
     }
 
-    fn ktudh(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn ktudh(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         let ktudh = Ktudh::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         self.xid = ktudh.xid;
         self.flg = ktudh.flg;
         Ok(())
     }
 
-    fn pdb(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn pdb(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         Pdb::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         Ok(())
     }
 
-    fn kteop(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn kteop(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         Kteop::parse_from_reader(parser, &mut self.reader, reader, field_num)?;
         Ok(())
     }
 }
 
 impl<'a> VectorParser<'a> for OpCode0502<'a> {
-    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>, OLRError> {
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>> {
         Ok(
             VectorData::OpCode0502(
                 OpCode0502::new(parser, reader)?

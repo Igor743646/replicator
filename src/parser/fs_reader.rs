@@ -3,7 +3,7 @@ use std::{fs::{File, Metadata}, io::{Read, Seek}, path::PathBuf, sync::Arc, time
 use crossbeam::channel::Sender;
 use log::{debug, info, warn};
 
-use crate::{common::{errors::OLRError, memory_pool::MemoryChunk, thread::Thread}, ctx::Ctx, olr_err, olr_perr};
+use crate::{common::{errors::{OLRError, Result}, memory_pool::MemoryChunk, thread::Thread}, ctx::Ctx, olr_err, olr_perr};
 use crate::common::OLRErrorCode::*;
 
 use super::byte_reader::{ByteReader, Endian};
@@ -30,7 +30,7 @@ impl Reader {
         }
     }
 
-    fn get_chunk(&self) -> Result<MemoryChunk, OLRError> {
+    fn get_chunk(&self) -> Result<MemoryChunk> {
         self.context_ptr.get_chunk()
     }
 
@@ -38,7 +38,7 @@ impl Reader {
         self.context_ptr.free_chunk(chunk)
     }
 
-    fn read_partial(&self, archive_log_file : &mut File, block_size : usize) -> Result<usize, (usize, OLRError)> {
+    fn read_partial(&self, archive_log_file : &mut File, block_size : usize) -> std::result::Result<usize, (usize, OLRError)> {
         let mut read_size = 0;
 
         loop {
@@ -95,7 +95,7 @@ impl Reader {
         Ok(read_size)
     }
 
-    fn get_file_data(&self, archive_log_file : &mut File) -> Result<(usize, Endian), OLRError> {
+    fn get_file_data(&self, archive_log_file : &mut File) -> Result<(usize, Endian)> {
         let mut buf = [0u8; 512];
 
         let result = archive_log_file.read_exact(&mut buf);
@@ -132,7 +132,7 @@ impl Thread for Reader {
         format!("Reader thread. Path: {}", self.file_path.to_str().unwrap().to_string())
     }
 
-    fn run(&self) -> Result<(), OLRError> {
+    fn run(&self) -> Result<()> {
 
         let mut confirmed_size: usize = 0;
         let retry: i32 = 5;

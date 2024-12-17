@@ -1,5 +1,5 @@
 use super::{VectorData, VectorParser};
-use crate::{common::{constants, errors::OLRError}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{constants, errors::Result}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 #[derive(Debug)]
 pub struct OpCode0520<'a> {
@@ -13,7 +13,7 @@ pub struct OpCode0520<'a> {
 }
 
 impl<'a> OpCode0520<'a> {
-    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self, OLRError> {
+    pub fn new(parser : &mut Parser, reader : VectorReader<'a>) -> Result<Self> {
         let mut res = Self {
             session_number : Default::default(),
             serial_number : Default::default(),
@@ -26,7 +26,7 @@ impl<'a> OpCode0520<'a> {
         Ok(res)
     }
 
-    fn init(&mut self, parser : &mut Parser) -> Result<(), OLRError> {
+    fn init(&mut self, parser : &mut Parser) -> Result<()> {
         assert!(self.reader.header.fields_count == 8, "Opcode: 5.4 Count of field != 8. Dump: {}", self.reader.by_ref().map(|x| {x.to_hex_dump()}).collect::<String>());
 
         if let Some(mut field_reader) = self.reader.next() {
@@ -64,7 +64,7 @@ impl<'a> OpCode0520<'a> {
         Ok(())
     }
     
-    fn session_attribute_1(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn session_attribute_1(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         assert!(reader.data().len() >= 4, "Size of field {} < 4", reader.data().len());
 
         if parser.version().unwrap() < constants::REDO_VERSION_19_0 {
@@ -88,7 +88,7 @@ impl<'a> OpCode0520<'a> {
         Ok(())
     }
 
-    fn session_attribute_2(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn session_attribute_2(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         
         if parser.can_dump(1) {
             let data = reader.read_bytes(reader.data().len() as usize)?;
@@ -98,7 +98,7 @@ impl<'a> OpCode0520<'a> {
         Ok(())
     }
 
-    fn session_attribute_3(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn session_attribute_3(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         assert!(reader.data().len() >= 6, "Size of field {} < 6", reader.data().len());
 
         if parser.can_dump(1) {
@@ -113,7 +113,7 @@ impl<'a> OpCode0520<'a> {
         Ok(())
     }
 
-    fn session_attribute_4(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn session_attribute_4(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         assert!(reader.data().len() >= 4, "Size of field {} < 4", reader.data().len());
 
         self.version = reader.read_u32()?;
@@ -125,7 +125,7 @@ impl<'a> OpCode0520<'a> {
         Ok(())
     }
 
-    fn session_attribute_5(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn session_attribute_5(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         assert!(reader.data().len() >= 4, "Size of field {} < 4", reader.data().len());
 
         self.audit_session_id = reader.read_u32()?;
@@ -137,11 +137,11 @@ impl<'a> OpCode0520<'a> {
         Ok(())
     }
 
-    fn session_attribute_6(&mut self, _ : &mut Parser, _ : &mut ByteReader, _ : usize) -> Result<(), OLRError> {
+    fn session_attribute_6(&mut self, _ : &mut Parser, _ : &mut ByteReader, _ : usize) -> Result<()> {
         Ok(())
     }
 
-    fn session_attribute_7(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn session_attribute_7(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         if parser.can_dump(1) {
             let client_id = String::from_utf8(reader.read_bytes(reader.data().len() as usize)?).unwrap_or_default();
             parser.write_dump(format_args!("\n[Change {}] Client id: {}", field_num, client_id))?;
@@ -149,7 +149,7 @@ impl<'a> OpCode0520<'a> {
         Ok(())
     }
 
-    fn session_attribute_8(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn session_attribute_8(&mut self, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         self.login_username = String::from_utf8(reader.read_bytes(reader.data().len() as usize)?).unwrap_or_default();
 
         if parser.can_dump(1) {
@@ -161,7 +161,7 @@ impl<'a> OpCode0520<'a> {
 }
 
 impl<'a> VectorParser<'a> for OpCode0520<'a> {
-    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>, OLRError> {
+    fn parse(parser : &mut Parser, reader : VectorReader<'a>) -> Result<VectorData<'a>> {
         Ok(
             VectorData::OpCode0520(
                 OpCode0520::new(parser, reader)?

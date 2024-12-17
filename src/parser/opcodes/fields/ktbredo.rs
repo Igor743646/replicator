@@ -1,4 +1,4 @@
-use crate::{common::{constants, errors::OLRError, types::{TypeScn, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{constants, errors::Result, types::{TypeScn, TypeXid}}, olr_perr, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 use super::VectorField;
 
@@ -8,7 +8,7 @@ pub struct Ktbredo {
 }
 
 impl VectorField for Ktbredo {
-    fn parse_from_reader(parser : &mut Parser, _vec_reader : &mut VectorReader, reader : &mut ByteReader, field_num : usize) -> Result<Self, OLRError> {
+    fn parse_from_reader(parser : &mut Parser, _vec_reader : &mut VectorReader, reader : &mut ByteReader, field_num : usize) -> Result<Self> {
         assert!(reader.data().len() >= 8, "Size of field {} < 8", reader.data().len());
 
         let mut result = Ktbredo { xid : Default::default() };

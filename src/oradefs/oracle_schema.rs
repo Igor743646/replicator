@@ -4,7 +4,7 @@ use log::info;
 use oracle::{sql_type::ToSql, Connection, ErrorKind, Statement};
 use serde::{ser::SerializeStruct, Serialize};
 use serde_json;
-use crate::{common::errors::OLRError, olr_err};
+use crate::{common::errors::Result, olr_err};
 
 use super::{db_object::DataBaseObject, oracle_table::OracleTable, sys_obj::SysObjTable, sys_tab::SysTabTable, sys_user::SysUserTable};
 use crate::common::OLRErrorCode::*;
@@ -33,7 +33,7 @@ pub struct OracleSchema {
 }
 
 impl Serialize for OracleSchema {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
         where
             S: serde::Serializer {
         let mut st = serializer.serialize_struct("oracle_schema", 3)?;
@@ -59,7 +59,7 @@ impl OracleSchema {
         self.schema_resource = resource;
     }
 
-    pub fn get_table(&mut self, obj_id : u32) -> Result<Option<Arc<OracleTable>>, OLRError> {
+    pub fn get_table(&mut self, obj_id : u32) -> Result<Option<Arc<OracleTable>>> {
         if let Some(x) = self.tables.get(&obj_id) {
             return Ok(x.clone());
         }
@@ -74,7 +74,7 @@ impl OracleSchema {
         Ok(self.tables.get(&obj_id).unwrap().clone())
     }
 
-    fn create_table_from_connection(&mut self, obj_id : u32) -> Result<(), OLRError> {
+    fn create_table_from_connection(&mut self, obj_id : u32) -> Result<()> {
         if let OracleSchemaResource::FromConnection(ref connection) = self.schema_resource {
             let mut stmt: Statement = Self::get_statement(&connection, GET_SYS_OBJ_BY_OBJ)?;
 
@@ -98,7 +98,7 @@ impl OracleSchema {
         }
     }
 
-    pub fn from_connection(connection : Connection, schema_objects : &Vec<DataBaseObject>) -> Result<Self, OLRError> {
+    pub fn from_connection(connection : Connection, schema_objects : &Vec<DataBaseObject>) -> Result<Self> {
         info!("Initialize Oracle Schema");
 
         let mut result = OracleSchema::default();
@@ -141,12 +141,12 @@ impl OracleSchema {
         Ok(result)
     }
 
-    fn read_detailed_info_from_connection(connection : &Connection, schema : &mut OracleSchema, user_id : u32, obj_id : u32) -> Result<(), OLRError> {
+    fn read_detailed_info_from_connection(connection : &Connection, schema : &mut OracleSchema, user_id : u32, obj_id : u32) -> Result<()> {
         
         { // SYS.TAB
             let mut stmt = Self::get_statement(&connection, GET_SYS_TAB_BY_OBJ)?;
 
-            let res: Result<(u32, u32, u32, Option<u16>, u64, u64), OLRError> = stmt.query_row_as::<(u32, u32, u32, Option<u16>, u64, u64)>(&[&obj_id])
+            let res: Result<(u32, u32, u32, Option<u16>, u64, u64)> = stmt.query_row_as::<(u32, u32, u32, Option<u16>, u64, u64)>(&[&obj_id])
                 .map_err(|err| olr_err!(OracleQuery, "Problems with statement executing: {} obj: {}", err, obj_id));
 
             if let Ok(res) = res {
@@ -157,12 +157,12 @@ impl OracleSchema {
         Ok(())
     }
 
-    fn get_statement(connection : &Connection, stmt : &'static str) -> Result<Statement, OLRError> {
+    fn get_statement(connection : &Connection, stmt : &'static str) -> Result<Statement> {
         Ok(connection.statement(stmt).build()
                 .map_err(|err| olr_err!(OracleQuery, "Problems with statement: {}", err))?)
     }
 
-    pub fn serialize(&self, file_name : String) -> Result<(), OLRError> {
+    pub fn serialize(&self, file_name : String) -> Result<()> {
         let mut file = OpenOptions::new().create(true).truncate(true).write(true).open(file_name).unwrap();
         file.write_all(serde_json::to_string_pretty(&self).unwrap().as_bytes()).unwrap();
         Ok(())
