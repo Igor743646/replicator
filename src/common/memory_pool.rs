@@ -4,17 +4,17 @@ use crate::common::OLRErrorCode::*;
 use crate::olr_err;
 use super::{constants, errors::Result};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MemoryChunk(NonNull<[u8]>);
 
 // Safety: No one besides us has the raw pointer, so we can safely transfer the
 // MemoryChunk to another thread.
-unsafe impl Send for MemoryChunk where Box<[u8]> : Send {}
+unsafe impl Send for MemoryChunk {}
 
 // Safety: `MemoryChunk` itself does not use any interior mutability whatsoever:
 // all the mutations are performed through an exclusive reference (`&mut`). This
 // means it suffices that `T` be `Sync` for `MemoryChunk` to be `Sync`:
-unsafe impl Sync for MemoryChunk where Box<[u8]>: Sync  {}
+unsafe impl Sync for MemoryChunk {}
 
 impl MemoryChunk {
     pub const MEMORY_CHUNK_SIZE : usize = constants::MEMORY_CHUNK_SIZE as usize;
@@ -35,6 +35,12 @@ impl MemoryChunk {
         }
 
         Ok(Self(data_ptr))
+    }
+}
+
+impl std::hash::Hash for MemoryChunk {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 

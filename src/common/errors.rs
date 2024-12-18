@@ -30,10 +30,11 @@ pub enum OLRErrorCode {
     SchemaReading,
     TransactionStart = 300000,
     TransactionClose,
+    TransactionMemory,
 }
 
 #[derive(Debug)]
-pub struct OracleLogicalReplicatorError {
+pub struct OLRError {
     source      : &'static str,
     line        : u32,
     code        : OLRErrorCode,
@@ -41,7 +42,6 @@ pub struct OracleLogicalReplicatorError {
     backtrace   : String,
 }
 
-pub type OLRError = OracleLogicalReplicatorError;
 pub type Result<T> = std::result::Result<T, OLRError>;
 
 impl OLRError {
@@ -69,7 +69,7 @@ impl Display for OLRError {
     }
 }
 
-impl Error for OracleLogicalReplicatorError {}
+impl Error for OLRError {}
 
 #[macro_export]
 macro_rules! olr_err {

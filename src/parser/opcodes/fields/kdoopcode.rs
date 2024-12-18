@@ -1,4 +1,4 @@
-use crate::{common::{constants, errors::OLRError, types::TypeFb}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
+use crate::{common::{constants, errors::Result, types::TypeFb}, parser::{byte_reader::ByteReader, parser_impl::Parser, record_reader::VectorReader}};
 
 use super::VectorField;
 
@@ -20,7 +20,7 @@ pub struct Kdoopcode {
 }
 
 impl Kdoopcode {
-    fn kdo_opcode_irp(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<(), OLRError> {
+    fn kdo_opcode_irp(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader, field_num : usize) -> Result<()> {
         assert!(reader.data().len() >= 48, "Size of field {} < 48", reader.data().len());
 
         result.fb = Some(reader.read_u8()?.into());
@@ -90,7 +90,7 @@ impl Kdoopcode {
         Ok(())
     }
 
-    fn kdo_opcode_drp(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
+    fn kdo_opcode_drp(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<()> {
         assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
 
         result.slot = Some(reader.read_u16()?);
@@ -103,7 +103,7 @@ impl Kdoopcode {
         Ok(())
     }
 
-    fn kdo_opcode_lkr(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
+    fn kdo_opcode_lkr(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<()> {
         assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
 
         result.slot = Some(reader.read_u16()?);
@@ -117,7 +117,7 @@ impl Kdoopcode {
         Ok(())
     }
 
-    fn kdo_opcode_urp(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
+    fn kdo_opcode_urp(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<()> {
         assert!(reader.data().len() >= 28, "Size of field {} < 28", reader.data().len());
 
         result.fb = Some(reader.read_u8()?.into());
@@ -141,7 +141,7 @@ impl Kdoopcode {
         Ok(())
     }
 
-    fn kdo_opcode_orp(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
+    fn kdo_opcode_orp(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<()> {
         assert!(reader.data().len() >= 48, "Size of field {} < 48", reader.data().len());
 
         result.fb = Some(reader.read_u8()?.into());
@@ -162,7 +162,7 @@ impl Kdoopcode {
         Ok(())
     }
 
-    fn kdo_opcode_cfa(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
+    fn kdo_opcode_cfa(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<()> {
         assert!(reader.data().len() >= 32, "Size of field {} < 32", reader.data().len());
 
         let nrid_bdba = reader.read_u32()?;
@@ -182,7 +182,7 @@ impl Kdoopcode {
         Ok(())
     }
 
-    fn kdo_opcode_cki(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
+    fn kdo_opcode_cki(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<()> {
         assert!(reader.data().len() >= 20, "Size of field {} < 20", reader.data().len());
 
         reader.skip_bytes(11);
@@ -195,7 +195,7 @@ impl Kdoopcode {
         Ok(())
     }
 
-    fn kdo_opcode_qm(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<(), OLRError> {
+    fn kdo_opcode_qm(result : &mut Kdoopcode, parser : &mut Parser, reader : &mut ByteReader) -> Result<()> {
         assert!(reader.data().len() >= 24, "Size of field {} < 24", reader.data().len());
 
         let tabn = reader.read_u8()?;
@@ -214,7 +214,7 @@ impl Kdoopcode {
 }
 
 impl VectorField for Kdoopcode {
-    fn parse_from_reader(parser : &mut Parser, _vec_reader : &mut VectorReader, reader : &mut ByteReader, field_num : usize) -> Result<Self, OLRError> {
+    fn parse_from_reader(parser : &mut Parser, _vec_reader : &mut VectorReader, reader : &mut ByteReader, field_num : usize) -> Result<Self> {
         assert!(reader.data().len() >= 16, "Size of field {} < 16", reader.data().len());
 
         let mut result = Kdoopcode::default();

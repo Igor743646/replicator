@@ -21,10 +21,16 @@ pub mod opcode1102;
 pub struct Vector<'a> {
     header : VectorHeader,
     data : VectorData<'a>,
+
+    size : usize,
+    data_ptr : *const u8,
 }
 
 impl<'a> Vector<'a> {
     pub fn parse(parser : &mut Parser, reader : &mut ByteReader<'a>, version : u32) -> Result<Self> {
+        let start_position = reader.cursor();
+        let data_ptr = reader.data().as_ptr();
+
         let header: VectorHeader = reader.read_redo_vector_header(version)?;
         trace!("Analize vector: {:?} offset: {}", header.op_code, reader.cursor());
         reader.align_up(4);
@@ -44,6 +50,8 @@ impl<'a> Vector<'a> {
         );
 
         reader.skip_bytes(body_size);
+
+        let size = reader.cursor() - start_position;
 
         let data = match header.op_code {
             (5, 1) => OpCode0501::parse(parser, vec_reader)?,
@@ -66,7 +74,9 @@ impl<'a> Vector<'a> {
 
         Ok(Self {
             header,
-            data
+            data,
+            size,
+            data_ptr,
         })
     }
 }
@@ -92,6 +102,18 @@ pub enum VectorData<'a> {
 }
 
 impl<'a> Vector<'a> {
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn opcode(&self) -> u16 {
+        ((self.header.op_code.0 as u16) << 8) | (self.header.op_code.1 as u16)
+    }
+
+    pub fn data(&self) -> *const u8 {
+        self.data_ptr
+    }
+    
     pub fn kind(&self) -> VectorKind {
         match &self.data {
             VectorData::OpCode0501(_) => VectorKind::OpCode0501,
@@ -102,6 +124,7 @@ impl<'a> Vector<'a> {
             VectorData::UnknownOpcode => VectorKind::UnknownOpcode,
         }
     }
+
     pub fn xid(&self) -> Option<TypeXid> {
         match &self.data {
             VectorData::OpCode0501(inside) => Some(inside.xid),

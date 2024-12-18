@@ -1,7 +1,6 @@
 use clap::Parser;
 use oracle_logical_replicator::OracleLogicalReplicator;
 use std::io::Write;
-use std::u32;
 use log::{error, info};
 
 

@@ -444,10 +444,7 @@ impl Parser {
         }
 
         let mut guard = self.transaction_buffer.lock().unwrap();
-        let transaction = guard.find_transaction(xid, true)?.unwrap();
-
-        transaction.set_start_info(record.scn, record.timestamp);
-
+        guard.init_transaction(xid, record.scn, record.timestamp)?;
         Ok(())
     }
 
@@ -463,7 +460,7 @@ impl Parser {
         let mut guard = self.transaction_buffer.lock().unwrap();
         // guard.close_transaction(commit.xid)?;
 
-        std::unimplemented!("Commit");
+        // std::unimplemented!("Commit");
 
         Ok(())
     }
@@ -508,7 +505,7 @@ impl RecordAnalizer for Parser {
                         self.push_to_transaction_double(first, second)?;
                     },
                     (_, _) => {
-                        info!("Unknown pair: {:?} {:?}", first, second);
+                        info!("Unknown pair: {:?} {:?}", first.kind(), second.kind());
                         warn!("Can not process it");
                     }
                 }
@@ -518,14 +515,14 @@ impl RecordAnalizer for Parser {
 
             if vector_pull.len() == 1 {
 
-                let first = vector_pull.pop_front().unwrap();
+                let first = vector_pull.front().unwrap();
 
                 match first.kind() {
                     VectorKind::OpCode0502 => {
-                        self.push_to_transaction_begin(record, first)?;
+                        self.push_to_transaction_begin(record, vector_pull.pop_front().unwrap())?;
                     },
                     VectorKind::OpCode0504 => {
-                        self.push_to_transaction_commit(first)?;
+                        self.push_to_transaction_commit(vector_pull.pop_front().unwrap())?;
                     },
                     _ => (),
                 }
